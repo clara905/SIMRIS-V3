@@ -12,6 +12,10 @@ use LogicException;
 
 class RoleScopeAssignmentService
 {
+    public function __construct(
+        private readonly AuditService $auditService
+    ) {}
+
     /**
      * Memberikan role baru atau mengganti role sebelumnya.
      */
@@ -21,7 +25,6 @@ class RoleScopeAssignmentService
         ?int $unitId = null
     ): UserRoleScope {
         return DB::transaction(function () use ($user, $roleCode, $unitId) {
-            // Mengunci user agar proses assignment bersamaan tidak bertabrakan.
             $lockedUser = User::query()
                 ->whereKey($user->id)
                 ->lockForUpdate()
@@ -77,6 +80,7 @@ class RoleScopeAssignmentService
             $now = now();
 
             $existingScopes = UserRoleScope::query()
+                ->with(['role', 'unit'])
                 ->where('user_id', $lockedUser->id)
                 ->whereNull('selesai')
                 ->lockForUpdate()
@@ -97,28 +101,66 @@ class RoleScopeAssignmentService
                     );
                 }
 
-                // Assignment yang sama tidak perlu dibuat ulang.
                 if (
                     $existingScope->role_id === $role->id
                     && $existingScope->unit_id === $unitId
                 ) {
                     return $existingScope;
                 }
+            }
 
-                // Tutup riwayat role sebelumnya.
+            // Ambil snapshot sebelum scope lama diubah.
+            $oldSnapshot = $existingScope
+                ? $this->scopeSnapshot($existingScope)
+                : null;
+
+            if ($existingScope) {
                 $existingScope->update([
                     'selesai' => $now,
                 ]);
             }
 
-            return UserRoleScope::create([
+            $newScope = UserRoleScope::create([
                 'user_id' => $lockedUser->id,
                 'role_id' => $role->id,
                 'unit_id' => $unitId,
                 'mulai' => $now,
                 'selesai' => null,
             ]);
+
+            $newScope->load(['role', 'unit']);
+
+            $this->auditService->record(
+                aksi: $existingScope
+                    ? 'CHANGE_ROLE'
+                    : 'ASSIGN_ROLE',
+                entitas: 'user_role_scope',
+                entitasId: $newScope->id,
+                dataLama: $oldSnapshot,
+                dataBaru: $this->scopeSnapshot($newScope),
+            );
+
+            return $newScope;
         });
+    }
+
+    /**
+     * Mengambil snapshot scope untuk kebutuhan audit.
+     */
+    private function scopeSnapshot(UserRoleScope $scope): array
+    {
+        return [
+            'scope_id' => $scope->id,
+            'user_id' => $scope->user_id,
+            'role_id' => $scope->role_id,
+            'role_kode' => $scope->role?->kode,
+            'role_nama' => $scope->role?->nama,
+            'unit_id' => $scope->unit_id,
+            'unit_kode' => $scope->unit?->kode,
+            'unit_nama' => $scope->unit?->nama,
+            'mulai' => $scope->mulai?->toISOString(),
+            'selesai' => $scope->selesai?->toISOString(),
+        ];
     }
 
     /**

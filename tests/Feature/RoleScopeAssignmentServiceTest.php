@@ -2,13 +2,17 @@
 
 namespace Tests\Feature;
 
+use App\Models\LogAudit;
 use App\Models\Pegawai;
 use App\Models\Role;
 use App\Models\UnitOrganisasi;
 use App\Models\User;
+use App\Services\AuditService;
 use App\Services\RoleScopeAssignmentService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use LogicException;
+use Mockery;
+use RuntimeException;
 use Tests\TestCase;
 
 class RoleScopeAssignmentServiceTest extends TestCase
@@ -49,16 +53,8 @@ class RoleScopeAssignmentServiceTest extends TestCase
             $unit->id
         );
 
-        $this->assertSame(
-            'ADMIN_SATKER',
-            $scope->role->kode
-        );
-
-        $this->assertSame(
-            $unit->id,
-            $scope->unit_id
-        );
-
+        $this->assertSame('ADMIN_SATKER', $scope->role->kode);
+        $this->assertSame($unit->id, $scope->unit_id);
         $this->assertNull($scope->selesai);
     }
 
@@ -102,6 +98,114 @@ class RoleScopeAssignmentServiceTest extends TestCase
             $user,
             'SUPER_ADMIN',
             $unit->id
+        );
+    }
+
+    public function test_first_role_assignment_creates_audit_record(): void
+    {
+        $user = $this->createUser();
+        $unit = $this->createUnit('SATKER');
+
+        $scope = $this->service->assignRole(
+            $user,
+            'ADMIN_SATKER',
+            $unit->id
+        );
+
+        $audit = LogAudit::query()
+            ->where('aksi', 'ASSIGN_ROLE')
+            ->firstOrFail();
+
+        $this->assertSame('user_role_scope', $audit->entitas);
+        $this->assertSame($scope->id, $audit->entitas_id);
+        $this->assertNull($audit->data_lama);
+
+        $this->assertSame(
+            'ADMIN_SATKER',
+            $audit->data_baru['role_kode']
+        );
+
+        $this->assertSame(
+            $unit->id,
+            $audit->data_baru['unit_id']
+        );
+    }
+
+    public function test_role_change_records_old_and_new_scope(): void
+    {
+        $user = $this->createUser();
+
+        $satker = $this->createUnit('SATKER');
+        $bidang = $this->createUnit('BIDANG');
+
+        $oldScope = $this->service->assignRole(
+            $user,
+            'ADMIN_SATKER',
+            $satker->id
+        );
+
+        $newScope = $this->service->assignRole(
+            $user,
+            'KABID',
+            $bidang->id
+        );
+
+        $audit = LogAudit::query()
+            ->where('aksi', 'CHANGE_ROLE')
+            ->firstOrFail();
+
+        $this->assertSame(
+            $oldScope->id,
+            $audit->data_lama['scope_id']
+        );
+
+        $this->assertSame(
+            'ADMIN_SATKER',
+            $audit->data_lama['role_kode']
+        );
+
+        $this->assertSame(
+            $newScope->id,
+            $audit->data_baru['scope_id']
+        );
+
+        $this->assertSame(
+            'KABID',
+            $audit->data_baru['role_kode']
+        );
+    }
+
+    public function test_same_role_assignment_does_not_create_duplicate_audit(): void
+    {
+        $user = $this->createUser();
+        $unit = $this->createUnit('SATKER');
+
+        $firstScope = $this->service->assignRole(
+            $user,
+            'ADMIN_SATKER',
+            $unit->id
+        );
+
+        $secondScope = $this->service->assignRole(
+            $user,
+            'ADMIN_SATKER',
+            $unit->id
+        );
+
+        $this->assertSame($firstScope->id, $secondScope->id);
+
+        $this->assertSame(
+            1,
+            LogAudit::query()
+                ->where('aksi', 'ASSIGN_ROLE')
+                ->count()
+        );
+
+        $this->assertSame(
+            0,
+            LogAudit::query()
+                ->where('aksi', 'CHANGE_ROLE')
+                ->count()
         );
     }
 
@@ -152,6 +256,75 @@ class RoleScopeAssignmentServiceTest extends TestCase
             $user,
             'ADMIN_SATKER',
             $unit->id
+        );
+    }
+
+    public function test_role_assignment_is_rolled_back_when_audit_fails(): void
+    {
+        $user = $this->createUser();
+        $satker = $this->createUnit('SATKER');
+        $bidang = $this->createUnit('BIDANG');
+
+        $oldScope = $this->service->assignRole(
+            $user,
+            'ADMIN_SATKER',
+            $satker->id
+        );
+
+        $oldScopeId = $oldScope->id;
+
+        $auditService = Mockery::mock(AuditService::class);
+
+        $auditService
+            ->shouldReceive('record')
+            ->once()
+            ->andThrow(new RuntimeException('Audit gagal disimpan.'));
+
+        $this->app->instance(AuditService::class, $auditService);
+
+        $service = app(RoleScopeAssignmentService::class);
+
+        try {
+            $service->assignRole(
+                $user,
+                'KABID',
+                $bidang->id
+            );
+
+            $this->fail('Seharusnya assignment gagal ketika audit gagal.');
+        } catch (RuntimeException $exception) {
+            $this->assertSame(
+                'Audit gagal disimpan.',
+                $exception->getMessage()
+            );
+        }
+
+        $this->assertDatabaseHas('user_role_scope', [
+            'id' => $oldScopeId,
+            'user_id' => $user->id,
+            'role_id' => Role::where('kode', 'ADMIN_SATKER')->value('id'),
+            'unit_id' => $satker->id,
+            'selesai' => null,
+        ]);
+
+        $this->assertDatabaseMissing('user_role_scope', [
+            'user_id' => $user->id,
+            'role_id' => Role::where('kode', 'KABID')->value('id'),
+            'unit_id' => $bidang->id,
+        ]);
+
+        $this->assertSame(
+            1,
+            LogAudit::query()
+                ->where('aksi', 'ASSIGN_ROLE')
+                ->count()
+        );
+
+        $this->assertSame(
+            0,
+            LogAudit::query()
+                ->where('aksi', 'CHANGE_ROLE')
+                ->count()
         );
     }
 
