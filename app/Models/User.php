@@ -44,6 +44,11 @@ class User extends Authenticatable
         return $this->hasMany(UserRoleScope::class, 'user_id');
     }
 
+    public function pengajuanAkun(): HasMany
+    {
+        return $this->hasMany(PengajuanAkun::class, 'user_id');
+    }
+
     public function logAudit(): HasMany
     {
         return $this->hasMany(LogAudit::class, 'user_id');
