@@ -10,13 +10,30 @@ use LogicException;
 
 class UserPolicy
 {
+    private const STATUS_MANAGEMENT_ROLES = [
+        'SUPER_ADMIN',
+        'ADMIN_SATKER',
+        'KASATKER',
+        'KABID',
+        'KASUB',
+    ];
+
+    private const ALLOWED_TARGET_ROLES = [
+        'SUPER_ADMIN',
+        'ADMIN_SATKER',
+        'KASATKER',
+        'KABID',
+        'KASUB',
+        'STAFF',
+    ];
+
     public function __construct(
         private readonly RoleScopeService $roleScopeService,
         private readonly UnitAccessService $unitAccessService
     ) {}
 
     /**
-     * Melihat daftar pengguna sesuai cakupan unit.
+     * Menentukan apakah pengguna boleh melihat daftar akun.
      */
     public function viewAny(User $user): bool
     {
@@ -45,7 +62,7 @@ class UserPolicy
     }
 
     /**
-     * Melihat detail pengguna sesuai cakupan unit.
+     * Menentukan apakah pengguna boleh melihat detail akun.
      */
     public function view(User $user, User $target): bool
     {
@@ -76,7 +93,92 @@ class UserPolicy
     }
 
     /**
-     * Memastikan pengguna target berada dalam cakupan unit aktor.
+     * Menentukan apakah akun boleh dinonaktifkan.
+     */
+    public function deactivate(User $user, User $target): bool
+    {
+        return $this->canManageStatus($user, $target);
+    }
+
+    /**
+     * Menentukan apakah akun boleh diaktifkan kembali.
+     */
+    public function reactivate(User $user, User $target): bool
+    {
+        return $this->canManageStatus($user, $target);
+    }
+
+    /**
+     * Validasi umum kewenangan pengelolaan status akun.
+     */
+    private function canManageStatus(
+        User $user,
+        User $target
+    ): bool {
+        // Pengguna tidak boleh mengelola status akunnya sendiri.
+        if ($user->id === $target->id) {
+            return false;
+        }
+
+        try {
+            $actorRole = $this->roleScopeService
+                ->getActiveRoleCode($user);
+
+            if (! in_array(
+                $actorRole,
+                self::STATUS_MANAGEMENT_ROLES,
+                true
+            )) {
+                return false;
+            }
+
+            /*
+             * Target harus mempunyai tepat satu role
+             * yang belum berakhir.
+             *
+             * Role masa depan juga dihitung agar kondisi
+             * konsisten dengan UserAdministrationService.
+             */
+            $scopes = $target->roleScopes()
+                ->with('role')
+                ->whereNull('selesai')
+                ->get();
+
+            if ($scopes->count() !== 1) {
+                return false;
+            }
+
+            $scope = $scopes->first();
+
+            // Role yang belum berlaku tidak boleh dikelola.
+            if ($scope->mulai->gt(now())) {
+                return false;
+            }
+
+            $targetRole = $scope->role?->kode;
+
+            if (! in_array(
+                $targetRole,
+                self::ALLOWED_TARGET_ROLES,
+                true
+            )) {
+                return false;
+            }
+
+            /*
+             * Pemeriksaan view memastikan:
+             * - Target berada dalam cakupan unit aktor.
+             * - Admin unit tidak dapat mengelola SUPER_ADMIN.
+             * - Penempatan STAFF masih berlaku.
+             */
+            return $this->view($user, $target);
+        } catch (LogicException) {
+            return false;
+        }
+    }
+
+    /**
+     * Memeriksa apakah target berada dalam cakupan unit aktor.
      */
     private function targetIsWithinScope(
         User $target,
@@ -88,7 +190,7 @@ class UserPolicy
             ->whereNull('selesai')
             ->get();
 
-        // Lebih dari satu role aktif berarti data tidak valid.
+        // Target dengan beberapa role aktif tidak valid.
         if ($scopes->count() > 1) {
             return false;
         }
@@ -97,12 +199,12 @@ class UserPolicy
             $scope = $scopes->first();
             $roleCode = $scope->role?->kode;
 
-            // Akun SUPER_ADMIN tidak termasuk cakupan administrator unit.
+            // Admin unit tidak boleh mengelola SUPER_ADMIN.
             if ($roleCode === 'SUPER_ADMIN') {
                 return false;
             }
 
-            // STAFF mengikuti unit penempatan pegawainya.
+            // Role selain STAFF menggunakan unit pada role scope.
             if ($roleCode !== 'STAFF') {
                 return $scope->unit_id !== null
                     && in_array(
@@ -117,8 +219,8 @@ class UserPolicy
         }
 
         /*
-         * Akun tanpa role aktif, termasuk akun yang menunggu persetujuan,
-         * menggunakan penempatan pegawai sebagai dasar cakupan.
+         * Akun tanpa role aktif atau STAFF diperiksa
+         * melalui penempatan pegawainya.
          */
         $pegawai = $target->pegawai;
 
@@ -130,7 +232,11 @@ class UserPolicy
             ->whereDate('mulai', '<=', Carbon::today())
             ->where(function ($query) {
                 $query->whereNull('selesai')
-                    ->orWhereDate('selesai', '>=', Carbon::today());
+                    ->orWhereDate(
+                        'selesai',
+                        '>=',
+                        Carbon::today()
+                    );
             })
             ->whereIn('unit_id', $accessibleUnitIds)
             ->whereHas('unit', function ($query) {

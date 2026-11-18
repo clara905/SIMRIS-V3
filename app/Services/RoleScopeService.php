@@ -137,7 +137,10 @@ class RoleScopeService
             ->with('unit')
             ->where('pegawai_id', $user->pegawai_id)
             ->whereDate('mulai', '<=', today())
-            ->whereNull('selesai')
+            ->where(function ($query) {
+                $query->whereNull('selesai')
+                    ->orWhereDate('selesai', '>=', today());
+            })
             ->get();
 
         if ($placements->count() > 1) {

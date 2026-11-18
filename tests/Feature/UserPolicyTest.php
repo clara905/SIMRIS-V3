@@ -35,6 +35,12 @@ class UserPolicyTest extends TestCase
         }
     }
 
+    /*
+    |--------------------------------------------------------------------------
+    | VIEW PERMISSIONS
+    |--------------------------------------------------------------------------
+    */
+
     public function test_super_admin_can_view_all_users(): void
     {
         $admin = $this->createUser();
@@ -171,7 +177,6 @@ class UserPolicyTest extends TestCase
         $this->createScope($admin, 'ADMIN_SATKER', $satker->id);
         $this->createPlacement($pegawai, $subbidang);
 
-        // Pending user sengaja belum memiliki role aktif.
         $this->assertTrue(
             Gate::forUser($admin)->allows('view', $pendingUser)
         );
@@ -210,6 +215,292 @@ class UserPolicyTest extends TestCase
             Gate::forUser($admin)->allows('view', $target)
         );
     }
+
+    /*
+    |--------------------------------------------------------------------------
+    | DEACTIVATE PERMISSIONS
+    |--------------------------------------------------------------------------
+    */
+
+    public function test_super_admin_can_deactivate_user(): void
+    {
+        $admin = $this->createUser();
+        $target = $this->createUser();
+
+        $this->createScope($admin, 'SUPER_ADMIN', null);
+        $this->createScope($target, 'SUPER_ADMIN', null);
+
+        $this->assertTrue(
+            Gate::forUser($admin)->allows('deactivate', $target)
+        );
+    }
+
+    public function test_admin_satker_can_deactivate_user_inside_scope(): void
+    {
+        $admin = $this->createUser();
+        $target = $this->createUser();
+
+        $satker = $this->createUnit('SATKER');
+        $bidang = $this->createUnit('BIDANG', $satker->id);
+
+        $this->createScope($admin, 'ADMIN_SATKER', $satker->id);
+        $this->createScope($target, 'KABID', $bidang->id);
+
+        $this->assertTrue(
+            Gate::forUser($admin)->allows('deactivate', $target)
+        );
+    }
+
+    public function test_kasatker_can_deactivate_user_inside_scope(): void
+    {
+        $admin = $this->createUser();
+        $target = $this->createUser();
+
+        $satker = $this->createUnit('SATKER');
+        $bidang = $this->createUnit('BIDANG', $satker->id);
+
+        $this->createScope($admin, 'KASATKER', $satker->id);
+        $this->createScope($target, 'KABID', $bidang->id);
+
+        $this->assertTrue(
+            Gate::forUser($admin)->allows('deactivate', $target)
+        );
+    }
+
+    public function test_kabid_can_deactivate_user_inside_scope(): void
+    {
+        $admin = $this->createUser();
+        $target = $this->createUser();
+
+        $bidang = $this->createUnit('BIDANG');
+        $subbidang = $this->createUnit('SUBBIDANG', $bidang->id);
+
+        $this->createScope($admin, 'KABID', $bidang->id);
+        $this->createScope($target, 'KASUB', $subbidang->id);
+
+        $this->assertTrue(
+            Gate::forUser($admin)->allows('deactivate', $target)
+        );
+    }
+
+    public function test_kasub_can_deactivate_staff_in_its_placement_unit(): void
+    {
+        $admin = $this->createUser();
+        $pegawai = $this->createPegawai();
+        $target = $this->createUser($pegawai);
+
+        $subbidang = $this->createUnit('SUBBIDANG');
+
+        $this->createScope($admin, 'KASUB', $subbidang->id);
+        $this->createScope($target, 'STAFF', null);
+        $this->createPlacement($pegawai, $subbidang);
+
+        $this->assertTrue(
+            Gate::forUser($admin)->allows('deactivate', $target)
+        );
+    }
+
+    public function test_staff_cannot_deactivate_another_user(): void
+    {
+        $admin = $this->createUser();
+        $target = $this->createUser();
+
+        $pegawai = $this->createPegawai();
+        $unit = $this->createUnit('SUBBIDANG');
+
+        $admin->update(['pegawai_id' => $pegawai->id]);
+
+        $this->createPlacement($pegawai, $unit);
+        $this->createScope($admin, 'STAFF', null);
+        $this->createScope($target, 'STAFF', null);
+
+        $this->assertFalse(
+            Gate::forUser($admin)->allows('deactivate', $target)
+        );
+    }
+
+    public function test_user_cannot_deactivate_own_account(): void
+    {
+        $user = $this->createUser();
+
+        $this->createScope($user, 'SUPER_ADMIN', null);
+
+        $this->assertFalse(
+            Gate::forUser($user)->allows('deactivate', $user)
+        );
+    }
+
+    public function test_unit_admin_cannot_deactivate_super_admin(): void
+    {
+        $admin = $this->createUser();
+        $target = $this->createUser();
+
+        $satker = $this->createUnit('SATKER');
+
+        $this->createScope($admin, 'ADMIN_SATKER', $satker->id);
+        $this->createScope($target, 'SUPER_ADMIN', null);
+
+        $this->assertFalse(
+            Gate::forUser($admin)->allows('deactivate', $target)
+        );
+    }
+
+    public function test_admin_cannot_deactivate_user_outside_scope(): void
+    {
+        $admin = $this->createUser();
+        $target = $this->createUser();
+
+        $satkerA = $this->createUnit('SATKER');
+        $satkerB = $this->createUnit('SATKER');
+
+        $this->createScope($admin, 'ADMIN_SATKER', $satkerA->id);
+        $this->createScope($target, 'KASATKER', $satkerB->id);
+
+        $this->assertFalse(
+            Gate::forUser($admin)->allows('deactivate', $target)
+        );
+    }
+
+    public function test_admin_cannot_deactivate_user_without_role(): void
+    {
+        $admin = $this->createUser();
+        $target = $this->createUser($this->createPegawai());
+
+        $satker = $this->createUnit('SATKER');
+
+        $this->createScope($admin, 'ADMIN_SATKER', $satker->id);
+
+        $this->assertFalse(
+            Gate::forUser($admin)->allows('deactivate', $target)
+        );
+    }
+
+    public function test_admin_cannot_deactivate_user_with_multiple_open_roles(): void
+    {
+        $admin = $this->createUser();
+        $target = $this->createUser();
+
+        $satker = $this->createUnit('SATKER');
+        $bidang = $this->createUnit('BIDANG', $satker->id);
+
+        $this->createScope($admin, 'ADMIN_SATKER', $satker->id);
+        $this->createScope($target, 'KASATKER', $satker->id);
+        $this->createScope($target, 'KABID', $bidang->id);
+
+        $this->assertFalse(
+            Gate::forUser($admin)->allows('deactivate', $target)
+        );
+    }
+
+    public function test_admin_cannot_deactivate_user_with_future_role(): void
+    {
+        $admin = $this->createUser();
+        $target = $this->createUser();
+
+        $satker = $this->createUnit('SATKER');
+
+        $this->createScope($admin, 'ADMIN_SATKER', $satker->id);
+
+        $futureScope = $this->createScope(
+            $target,
+            'STAFF',
+            null
+        );
+
+        $futureScope->update([
+            'mulai' => now()->addDay(),
+        ]);
+
+        $this->assertFalse(
+            Gate::forUser($admin)->allows('deactivate', $target)
+        );
+    }
+
+    /*
+    |--------------------------------------------------------------------------
+    | REACTIVATE PERMISSIONS
+    |--------------------------------------------------------------------------
+    */
+
+    public function test_super_admin_can_reactivate_user(): void
+    {
+        $admin = $this->createUser();
+        $target = $this->createUser();
+
+        $this->createScope($admin, 'SUPER_ADMIN', null);
+        $this->createScope($target, 'SUPER_ADMIN', null);
+
+        $this->assertTrue(
+            Gate::forUser($admin)->allows('reactivate', $target)
+        );
+    }
+
+    public function test_admin_satker_can_reactivate_user_inside_scope(): void
+    {
+        $admin = $this->createUser();
+        $target = $this->createUser();
+
+        $satker = $this->createUnit('SATKER');
+        $bidang = $this->createUnit('BIDANG', $satker->id);
+
+        $this->createScope($admin, 'ADMIN_SATKER', $satker->id);
+        $this->createScope($target, 'KABID', $bidang->id);
+
+        $this->assertTrue(
+            Gate::forUser($admin)->allows('reactivate', $target)
+        );
+    }
+
+    public function test_staff_cannot_reactivate_another_user(): void
+    {
+        $admin = $this->createUser();
+        $target = $this->createUser();
+
+        $pegawai = $this->createPegawai();
+        $unit = $this->createUnit('SUBBIDANG');
+
+        $admin->update(['pegawai_id' => $pegawai->id]);
+
+        $this->createPlacement($pegawai, $unit);
+        $this->createScope($admin, 'STAFF', null);
+        $this->createScope($target, 'STAFF', null);
+
+        $this->assertFalse(
+            Gate::forUser($admin)->allows('reactivate', $target)
+        );
+    }
+
+    public function test_user_cannot_reactivate_own_account(): void
+    {
+        $user = $this->createUser();
+
+        $this->createScope($user, 'SUPER_ADMIN', null);
+
+        $this->assertFalse(
+            Gate::forUser($user)->allows('reactivate', $user)
+        );
+    }
+
+    public function test_unit_admin_cannot_reactivate_super_admin(): void
+    {
+        $admin = $this->createUser();
+        $target = $this->createUser();
+
+        $satker = $this->createUnit('SATKER');
+
+        $this->createScope($admin, 'ADMIN_SATKER', $satker->id);
+        $this->createScope($target, 'SUPER_ADMIN', null);
+
+        $this->assertFalse(
+            Gate::forUser($admin)->allows('reactivate', $target)
+        );
+    }
+
+    /*
+    |--------------------------------------------------------------------------
+    | TEST HELPERS
+    |--------------------------------------------------------------------------
+    */
 
     private function createUser(?Pegawai $pegawai = null): User
     {

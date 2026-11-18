@@ -1,5 +1,6 @@
 <?php
 
+use App\Http\Middleware\EnsureActiveUser;
 use App\Http\Middleware\EnsureRole;
 use App\Http\Middleware\EnsureUnitAccess;
 use Illuminate\Foundation\Application;
@@ -16,11 +17,7 @@ return Application::configure(basePath: dirname(__DIR__))
     )
     ->withMiddleware(function (Middleware $middleware): void {
         $middleware->alias([
-            'simris.role' => EnsureRole::class,
-        ]);
-    })
-    ->withMiddleware(function (Middleware $middleware): void {
-        $middleware->alias([
+            'simris.active' => EnsureActiveUser::class,
             'simris.role' => EnsureRole::class,
             'simris.unit' => EnsureUnitAccess::class,
         ]);

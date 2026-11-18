@@ -237,7 +237,10 @@ class RoleScopeAssignmentService
             ->with('unit')
             ->where('pegawai_id', $user->pegawai_id)
             ->whereDate('mulai', '<=', today())
-            ->whereNull('selesai')
+            ->where(function ($query) {
+                $query->whereNull('selesai')
+                    ->orWhereDate('selesai', '>=', today());
+            })
             ->lockForUpdate()
             ->get();
 
