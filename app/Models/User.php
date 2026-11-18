@@ -43,4 +43,9 @@ class User extends Authenticatable
     {
         return $this->hasMany(UserRoleScope::class, 'user_id');
     }
+
+    public function logAudit(): HasMany
+    {
+        return $this->hasMany(LogAudit::class, 'user_id');
+    }
 }
