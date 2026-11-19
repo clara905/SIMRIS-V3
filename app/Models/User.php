@@ -53,4 +53,14 @@ class User extends Authenticatable
     {
         return $this->hasMany(LogAudit::class, 'user_id');
     }
+
+    public function periodePenilaianDibuat(): HasMany
+    {
+        return $this->hasMany(PeriodePenilaian::class, 'dibuat_oleh');
+    }
+
+    public function asesmenRisikoDibuat(): HasMany
+    {
+        return $this->hasMany(AsesmenRisiko::class, 'dibuat_oleh');
+    }
 }

@@ -42,4 +42,14 @@ class UnitOrganisasi extends Model
     {
         return $this->hasMany(PenempatanPegawai::class, 'unit_id');
     }
+
+    public function periodePenilaian(): HasMany
+    {
+        return $this->hasMany(PeriodePenilaian::class, 'unit_id');
+    }
+
+    public function asesmenRisiko(): HasMany
+    {
+        return $this->hasMany(AsesmenRisiko::class, 'unit_id');
+    }
 }
