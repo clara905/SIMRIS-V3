@@ -2,10 +2,14 @@
 
 namespace Tests\Feature;
 
+use App\Models\Aset;
+use App\Models\KategoriAset;
 use App\Models\LogAudit;
 use App\Models\Pegawai;
 use App\Models\PenempatanPegawai;
+use App\Models\PenugasanAset;
 use App\Models\Role;
+use App\Models\SumberAset;
 use App\Models\UnitOrganisasi;
 use App\Models\User;
 use App\Models\UserRoleScope;
@@ -185,6 +189,205 @@ class PenempatanPegawaiServiceTest extends TestCase
             $newUnit->id,
             $roleScopeService->getEffectiveUnitId($user)
         );
+    }
+
+    public function test_transfer_automatically_ends_old_unit_asset_assignments(): void
+    {
+        $pegawai = $this->createPegawai();
+        $oldUnit = $this->createUnit();
+        $newUnit = $this->createUnit();
+
+        $this->createPlacement($pegawai, $oldUnit, '2026-01-01');
+
+        $aset = $this->createAssetForTransferTest($oldUnit);
+
+        $assignment = $this->createAssetAssignmentForTransferTest(
+            $aset,
+            $pegawai,
+            '2026-01-15'
+        );
+
+        $this->service->transfer(
+            $pegawai,
+            $newUnit->id,
+            '2026-06-01'
+        );
+
+        $assignment->refresh();
+
+        $this->assertSame(
+            '2026-05-31',
+            $assignment->selesai->toDateString()
+        );
+
+        $this->assertDatabaseHas('log_audit', [
+            'aksi' => 'END_ASSET_ASSIGNMENT',
+            'entitas' => 'penugasan_aset',
+            'entitas_id' => $assignment->id,
+        ]);
+
+        $this->assertDatabaseHas('log_audit', [
+            'aksi' => 'CHANGE_PLACEMENT',
+            'entitas' => 'penempatan_pegawai',
+        ]);
+    }
+
+    public function test_transfer_does_not_end_assignment_for_another_asset_owner_unit(): void
+    {
+        $pegawai = $this->createPegawai();
+
+        $oldUnit = $this->createUnit();
+        $newUnit = $this->createUnit();
+        $otherUnit = $this->createUnit();
+
+        $this->createPlacement($pegawai, $oldUnit, '2026-01-01');
+
+        $otherAsset = $this->createAssetForTransferTest($otherUnit);
+
+        $otherAssignment = $this->createAssetAssignmentForTransferTest(
+            $otherAsset,
+            $pegawai,
+            '2026-01-15'
+        );
+
+        $this->service->transfer(
+            $pegawai,
+            $newUnit->id,
+            '2026-06-01'
+        );
+
+        $otherAssignment->refresh();
+
+        $this->assertNull($otherAssignment->selesai);
+    }
+
+    public function test_transfer_rejects_future_asset_assignment(): void
+    {
+        $pegawai = $this->createPegawai();
+
+        $oldUnit = $this->createUnit();
+        $newUnit = $this->createUnit();
+
+        $oldPlacement = $this->createPlacement(
+            $pegawai,
+            $oldUnit,
+            '2026-01-01'
+        );
+
+        $aset = $this->createAssetForTransferTest($oldUnit);
+
+        $assignment = $this->createAssetAssignmentForTransferTest(
+            $aset,
+            $pegawai,
+            '2026-06-01'
+        );
+
+        try {
+            $this->service->transfer(
+                $pegawai,
+                $newUnit->id,
+                '2026-06-01'
+            );
+
+            $this->fail(
+                'Transfer seharusnya ditolak karena ada penugasan aset masa depan.'
+            );
+        } catch (LogicException $exception) {
+            $this->assertStringContainsString(
+                'penugasan aset yang baru dimulai',
+                $exception->getMessage()
+            );
+        }
+
+        $this->assertDatabaseHas('penempatan_pegawai', [
+            'id' => $oldPlacement->id,
+            'selesai' => null,
+        ]);
+
+        $this->assertDatabaseMissing('penempatan_pegawai', [
+            'pegawai_id' => $pegawai->id,
+            'unit_id' => $newUnit->id,
+        ]);
+
+        $this->assertDatabaseHas('penugasan_aset', [
+            'id' => $assignment->id,
+            'selesai' => null,
+        ]);
+
+        $this->assertDatabaseMissing('log_audit', [
+            'aksi' => 'END_ASSET_ASSIGNMENT',
+            'entitas_id' => $assignment->id,
+        ]);
+    }
+
+    public function test_transfer_rolls_back_asset_assignment_when_assignment_audit_fails(): void
+    {
+        $pegawai = $this->createPegawai();
+
+        $oldUnit = $this->createUnit();
+        $newUnit = $this->createUnit();
+
+        $oldPlacement = $this->createPlacement(
+            $pegawai,
+            $oldUnit,
+            '2026-01-01'
+        );
+
+        $aset = $this->createAssetForTransferTest($oldUnit);
+
+        $assignment = $this->createAssetAssignmentForTransferTest(
+            $aset,
+            $pegawai,
+            '2026-01-15'
+        );
+
+        $auditService = Mockery::mock(AuditService::class);
+
+        $auditService
+            ->shouldReceive('record')
+            ->once()
+            ->andThrow(new RuntimeException('Audit penugasan gagal.'));
+
+        $this->app->instance(AuditService::class, $auditService);
+
+        $service = app(PenempatanPegawaiService::class);
+
+        try {
+            $service->transfer(
+                $pegawai,
+                $newUnit->id,
+                '2026-06-01'
+            );
+
+            $this->fail(
+                'Transfer seharusnya gagal ketika audit penugasan aset gagal.'
+            );
+        } catch (RuntimeException $exception) {
+            $this->assertSame(
+                'Audit penugasan gagal.',
+                $exception->getMessage()
+            );
+        }
+
+        $this->assertDatabaseHas('penempatan_pegawai', [
+            'id' => $oldPlacement->id,
+            'selesai' => null,
+        ]);
+
+        $this->assertDatabaseMissing('penempatan_pegawai', [
+            'pegawai_id' => $pegawai->id,
+            'unit_id' => $newUnit->id,
+        ]);
+
+        $this->assertDatabaseHas('penugasan_aset', [
+            'id' => $assignment->id,
+            'selesai' => null,
+        ]);
+
+        $this->assertDatabaseMissing('log_audit', [
+            'aksi' => 'END_ASSET_ASSIGNMENT',
+            'entitas_id' => $assignment->id,
+        ]);
     }
 
     public function test_transfer_rejects_same_destination_unit(): void
@@ -413,6 +616,51 @@ class PenempatanPegawaiServiceTest extends TestCase
             'unit_id' => $unit->id,
             'mulai' => $mulai,
             'selesai' => $selesai,
+        ]);
+    }
+
+    private function createAssetForTransferTest(
+        UnitOrganisasi $unit
+    ): Aset {
+        $sumber = SumberAset::create([
+            'kode' => fake()->unique()->bothify('SRC-####'),
+            'nama' => 'Sumber Pengujian',
+        ]);
+
+        $kategori = KategoriAset::create([
+            'parent_id' => null,
+            'kode' => fake()->unique()->bothify('KAT-####'),
+            'nama' => 'Kategori Pengujian',
+        ]);
+
+        return Aset::query()->create([
+            'sumber_id' => $sumber->id,
+            'unit_pemilik_id' => $unit->id,
+            'kategori_id' => $kategori->id,
+            'kode_aset' => fake()->unique()->bothify('AST-####'),
+            'nama' => 'Aset Pengujian',
+            'deskripsi' => 'Aset untuk pengujian mutasi.',
+            'merk' => 'Lenovo',
+            'nomor_seri' => fake()->unique()->bothify('SN-######'),
+            'jumlah' => 1,
+            'kondisi' => 'BAIK',
+            'lokasi' => 'Ruang Pengujian',
+            'tanggal_pengadaan' => '2026-01-15',
+            'status' => 'AKTIF',
+        ]);
+    }
+
+    private function createAssetAssignmentForTransferTest(
+        Aset $aset,
+        Pegawai $pegawai,
+        string $mulai
+    ): PenugasanAset {
+        return PenugasanAset::query()->create([
+            'aset_idx' => $aset->idx,
+            'pegawai_id' => $pegawai->id,
+            'jenis_tanggung_jawab' => 'PENANGGUNG_JAWAB',
+            'mulai' => $mulai,
+            'selesai' => null,
         ]);
     }
 }

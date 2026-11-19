@@ -47,7 +47,6 @@ class AsetTest extends TestCase
             'lokasi',
             'tanggal_pengadaan',
             'status',
-            'sumber_perolehan',
             'last_synced_at',
         ], (new Aset)->getFillable());
     }

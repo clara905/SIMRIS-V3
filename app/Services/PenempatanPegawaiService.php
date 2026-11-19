@@ -4,6 +4,7 @@ namespace App\Services;
 
 use App\Models\Pegawai;
 use App\Models\PenempatanPegawai;
+use App\Models\PenugasanAset;
 use App\Models\UnitOrganisasi;
 use Carbon\CarbonImmutable;
 use DateTimeInterface;
@@ -16,9 +17,6 @@ class PenempatanPegawaiService
         private readonly AuditService $auditService
     ) {}
 
-    /**
-     * Membuat penempatan pertama pegawai.
-     */
     public function assignInitial(
         Pegawai $pegawai,
         int $unitId,
@@ -70,7 +68,10 @@ class PenempatanPegawaiService
      * Memindahkan pegawai ke unit baru.
      *
      * Penempatan lama berakhir sehari sebelum tanggal efektif.
-     * Penempatan baru dimulai pada tanggal efektif.
+     * Penugasan aset aktif pada unit lama juga otomatis berakhir
+     * sehari sebelum tanggal efektif.
+     *
+     * Semua perubahan dan audit berada dalam satu transaksi.
      */
     public function transfer(
         Pegawai $pegawai,
@@ -138,6 +139,66 @@ class PenempatanPegawaiService
                     'Tanggal penempatan baru bertumpang tindih dengan riwayat penempatan lain.'
                 );
             }
+
+            // Kunci dan ambil penugasan aset aktif pada unit pemilik lama.
+            $activeAssignments = PenugasanAset::query()
+                ->with('aset')
+                ->where('pegawai_id', $lockedPegawai->id)
+                ->whereNull('selesai')
+                ->whereHas('aset', function ($query) use ($oldPlacement) {
+                    $query->where(
+                        'unit_pemilik_id',
+                        $oldPlacement->unit_id
+                    );
+                })
+                ->lockForUpdate()
+                ->get();
+
+            // Jangan memotong penugasan yang baru dimulai pada atau
+            // setelah tanggal efektif perpindahan.
+            $futureAssignment = $activeAssignments->first(
+                fn (PenugasanAset $assignment) => $assignment->mulai->toDateString()
+                    >= $tanggalBaru->toDateString()
+            );
+
+            if ($futureAssignment) {
+                throw new LogicException(
+                    'Mutasi tidak dapat dilakukan karena terdapat penugasan aset yang baru dimulai pada atau setelah tanggal efektif. Selesaikan atau koreksi penugasan tersebut terlebih dahulu.'
+                );
+            }
+
+            // Tutup penugasan aset aktif pada unit lama dan catat audit.
+            foreach ($activeAssignments as $assignment) {
+                if (
+                    $tanggalAkhirLama->lessThan(
+                        CarbonImmutable::parse($assignment->mulai)
+                    )
+                ) {
+                    throw new LogicException(
+                        'Tanggal efektif perpindahan menyebabkan periode penugasan aset tidak valid.'
+                    );
+                }
+
+                $oldAssignmentSnapshot = $this->assetAssignmentSnapshot(
+                    $assignment
+                );
+
+                $assignment->selesai = $tanggalAkhirLama->toDateString();
+                $assignment->save();
+
+                $this->auditService->record(
+                    aksi: 'END_ASSET_ASSIGNMENT',
+                    entitas: 'penugasan_aset',
+                    entitasId: $assignment->id,
+                    dataLama: $oldAssignmentSnapshot,
+                    dataBaru: $this->assetAssignmentSnapshot($assignment),
+                    catatan: sprintf(
+                        'Penugasan aset otomatis diakhiri karena mutasi pegawai efektif %s.',
+                        $tanggalBaru->toDateString()
+                    ),
+                );
+            }
+
             $oldSnapshot = $this->placementSnapshot($oldPlacement);
 
             $oldPlacement->update([
@@ -165,9 +226,6 @@ class PenempatanPegawaiService
         });
     }
 
-    /**
-     * Mengakhiri penempatan tanpa membuat penempatan baru.
-     */
     public function close(
         Pegawai $pegawai,
         string|DateTimeInterface $tanggalSelesai
@@ -224,9 +282,6 @@ class PenempatanPegawaiService
         });
     }
 
-    /**
-     * Mengunci dan memvalidasi pegawai.
-     */
     private function lockActivePegawai(Pegawai $pegawai): Pegawai
     {
         $lockedPegawai = Pegawai::query()
@@ -242,9 +297,6 @@ class PenempatanPegawaiService
         return $lockedPegawai;
     }
 
-    /**
-     * Mengunci dan memvalidasi unit tujuan.
-     */
     private function lockActiveUnit(int $unitId): UnitOrganisasi
     {
         $unit = UnitOrganisasi::query()
@@ -266,18 +318,12 @@ class PenempatanPegawaiService
         return $unit;
     }
 
-    /**
-     * Menormalisasi input tanggal menjadi tanggal tanpa komponen waktu.
-     */
     private function normalizeDate(
         string|DateTimeInterface $tanggal
     ): CarbonImmutable {
         return CarbonImmutable::parse($tanggal)->startOfDay();
     }
 
-    /**
-     * Snapshot penempatan untuk audit.
-     */
     private function placementSnapshot(
         PenempatanPegawai $placement
     ): array {
@@ -293,6 +339,26 @@ class PenempatanPegawaiService
             'unit_nama' => $placement->unit?->nama,
             'mulai' => $placement->mulai?->toDateString(),
             'selesai' => $placement->selesai?->toDateString(),
+        ];
+    }
+
+    private function assetAssignmentSnapshot(
+        PenugasanAset $assignment
+    ): array {
+        $assignment->loadMissing(['aset', 'pegawai']);
+
+        return [
+            'penugasan_id' => $assignment->id,
+            'aset_idx' => $assignment->aset_idx,
+            'kode_aset' => $assignment->aset?->kode_aset,
+            'nama_aset' => $assignment->aset?->nama,
+            'unit_pemilik_id' => $assignment->aset?->unit_pemilik_id,
+            'pegawai_id' => $assignment->pegawai_id,
+            'pegawai_nip' => $assignment->pegawai?->nip,
+            'pegawai_nama' => $assignment->pegawai?->nama,
+            'jenis_tanggung_jawab' => $assignment->jenis_tanggung_jawab,
+            'mulai' => $assignment->mulai?->toDateString(),
+            'selesai' => $assignment->selesai?->toDateString(),
         ];
     }
 }

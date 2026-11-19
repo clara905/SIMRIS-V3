@@ -1,9 +1,15 @@
 <?php
 
+use App\Http\Controllers\AsetController;
+use App\Http\Controllers\DokumenController;
+use App\Http\Controllers\KategoriAsetController;
+use App\Http\Controllers\KlasifikasiInformasiController;
 use App\Http\Controllers\PegawaiController;
 use App\Http\Controllers\PenempatanPegawaiController;
 use App\Http\Controllers\PengajuanAkunController;
+use App\Http\Controllers\PenugasanAsetController;
 use App\Http\Controllers\RoleAssignmentController;
+use App\Http\Controllers\SumberAsetController;
 use App\Http\Controllers\UnitOrganisasiController;
 use App\Http\Controllers\UserAdministrationController;
 use Illuminate\Http\Request;
@@ -131,6 +137,61 @@ Route::prefix('v1')
             '/administrasi/pengguna/{user}/role',
             [RoleAssignmentController::class, 'assign']
         );
+
+        // Master Data Aset
+
+        // Sumber Aset
+        Route::get('/sumber-aset', [SumberAsetController::class, 'index']);
+        Route::post('/sumber-aset', [SumberAsetController::class, 'store']);
+        Route::get('/sumber-aset/{sumberAset}', [SumberAsetController::class, 'show']);
+        Route::put('/sumber-aset/{sumberAset}', [SumberAsetController::class, 'update']);
+        Route::delete('/sumber-aset/{sumberAset}', [SumberAsetController::class, 'destroy']);
+
+        // Kategori Aset
+        Route::get('/kategori-aset', [KategoriAsetController::class, 'index']);
+        Route::post('/kategori-aset', [KategoriAsetController::class, 'store']);
+        Route::get('/kategori-aset/{kategoriAset}', [KategoriAsetController::class, 'show']);
+        Route::put('/kategori-aset/{kategoriAset}', [KategoriAsetController::class, 'update']);
+        Route::delete('/kategori-aset/{kategoriAset}', [KategoriAsetController::class, 'destroy']);
+
+        // Klasifikasi Informasi
+        Route::get('/klasifikasi-informasi', [KlasifikasiInformasiController::class, 'index']);
+        Route::post('/klasifikasi-informasi', [KlasifikasiInformasiController::class, 'store']);
+        Route::get('/klasifikasi-informasi/{klasifikasiInformasi}', [KlasifikasiInformasiController::class, 'show']);
+        Route::put('/klasifikasi-informasi/{klasifikasiInformasi}', [KlasifikasiInformasiController::class, 'update']);
+        Route::delete('/klasifikasi-informasi/{klasifikasiInformasi}', [KlasifikasiInformasiController::class, 'destroy']);
+
+        // Inventaris Aset
+        Route::get('/aset', [AsetController::class, 'index']);
+        Route::post('/aset', [AsetController::class, 'store']);
+        Route::get('/aset/{aset}', [AsetController::class, 'show']);
+        Route::put('/aset/{aset}', [AsetController::class, 'update']);
+        Route::delete('/aset/{aset}', [AsetController::class, 'destroy']);
+
+        // Penugasan Aset
+        Route::get(
+            '/aset/{aset}/penugasan',
+            [PenugasanAsetController::class, 'index']
+        );
+
+        Route::post(
+            '/aset/{aset}/penugasan',
+            [PenugasanAsetController::class, 'store']
+        );
+
+        Route::patch(
+            '/penugasan-aset/{penugasan}/akhiri',
+            [PenugasanAsetController::class, 'end']
+        );
+
+        // Dokumen
+        Route::get('/dokumen', [DokumenController::class, 'index']);
+        Route::post('/dokumen', [DokumenController::class, 'store']);
+        Route::get('/dokumen/{dokumen}', [DokumenController::class, 'show']);
+        Route::get('/dokumen/{dokumen}/download', [
+            DokumenController::class,
+            'download',
+        ]);
 
         // Administrasi Pengguna
         Route::patch(

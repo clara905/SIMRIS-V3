@@ -23,7 +23,6 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
     'lokasi',
     'tanggal_pengadaan',
     'status',
-    'sumber_perolehan',
     'last_synced_at',
 ])]
 class Aset extends Model

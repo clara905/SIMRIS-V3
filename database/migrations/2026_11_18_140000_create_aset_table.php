@@ -1,3 +1,4 @@
+
 <?php
 
 use Illuminate\Database\Migrations\Migration;
@@ -41,13 +42,7 @@ return new class extends Migration
             $table->date('tanggal_pengadaan');
             $table->string('status', 50);
 
-            // Informasi tambahan mengenai asal perolehan aset.
-            $table->string('sumber_perolehan')->nullable();
-
-            // Diisi ketika data aset berhasil disinkronkan.
             $table->dateTime('last_synced_at')->nullable();
-
-            // Menggunakan nama timestamp sesuai ERD.
             $table->dateTime('dibuat_pada');
             $table->dateTime('diperbarui_pada');
         });
