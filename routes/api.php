@@ -4,6 +4,7 @@ use App\Http\Controllers\AsetController;
 use App\Http\Controllers\DokumenController;
 use App\Http\Controllers\KategoriAsetController;
 use App\Http\Controllers\KlasifikasiInformasiController;
+use App\Http\Controllers\MetodeRisikoController;
 use App\Http\Controllers\PegawaiController;
 use App\Http\Controllers\PenempatanPegawaiController;
 use App\Http\Controllers\PengajuanAkunController;
@@ -192,6 +193,32 @@ Route::prefix('v1')
             DokumenController::class,
             'download',
         ]);
+
+        // Master Metode Risiko
+        Route::get(
+            '/metode-risiko',
+            [MetodeRisikoController::class, 'index']
+        );
+
+        Route::get(
+            '/metode-risiko/{versi}',
+            [MetodeRisikoController::class, 'show']
+        );
+
+        Route::post(
+            '/metode-risiko',
+            [MetodeRisikoController::class, 'store']
+        );
+
+        Route::put(
+            '/metode-risiko/{versi}/konfigurasi',
+            [MetodeRisikoController::class, 'configure']
+        );
+
+        Route::post(
+            '/metode-risiko/{versi}/bekukan',
+            [MetodeRisikoController::class, 'freeze']
+        );
 
         // Administrasi Pengguna
         Route::patch(
