@@ -6,14 +6,17 @@ import { ProtectedRoute } from './ProtectedRoute';
 import { LoginPage } from '@/pages/auth/LoginPage';
 import { DashboardPage } from '@/pages/dashboard/DashboardPage';
 import { AssetsPage } from '@/pages/assets/AssetsPage';
-import { ThreatsPage } from '@/pages/threats/ThreatsPage';
-import { VulnerabilitiesPage } from '@/pages/vulnerabilities/VulnerabilitiesPage';
 import { RiskAssessmentPage } from '@/pages/risk-assessment/RiskAssessmentPage';
 import { RiskTreatmentPage } from '@/pages/risk-treatment/RiskTreatmentPage';
 import { ReportsPage } from '@/pages/reports/ReportsPage';
-import { UsersPage } from '@/pages/users/UsersPage';
 import { SettingsPage } from '@/pages/settings/SettingsPage';
 
+/**
+ * AppRouter — STAFF (SATKER) role routes
+ * 
+ * Uses Indonesian route paths matching the navigation constants.
+ * Admin-only routes (users, threats, vulnerabilities) are excluded.
+ */
 export function AppRouter() {
   return (
     <BrowserRouter>
@@ -28,18 +31,22 @@ export function AppRouter() {
           }
         />
 
-        {/* Protected app routes */}
+        {/* Protected STAFF routes */}
         <Route element={<ProtectedRoute />}>
           <Route element={<DashboardLayout />}>
+            {/* Workspace */}
             <Route path="/dashboard" element={<DashboardPage />} />
-            <Route path="/assets" element={<AssetsPage />} />
-            <Route path="/threats" element={<ThreatsPage />} />
-            <Route path="/vulnerabilities" element={<VulnerabilitiesPage />} />
-            <Route path="/risk-assessment" element={<RiskAssessmentPage />} />
-            <Route path="/risk-treatment" element={<RiskTreatmentPage />} />
-            <Route path="/reports" element={<ReportsPage />} />
-            <Route path="/users" element={<UsersPage />} />
-            <Route path="/settings" element={<SettingsPage />} />
+            <Route path="/asesmen-risiko" element={<RiskAssessmentPage />} />
+            <Route path="/penanganan-risiko" element={<RiskTreatmentPage />} />
+            
+            {/* Data */}
+            <Route path="/aset" element={<AssetsPage />} />
+            <Route path="/dokumentasi" element={<div className="p-6 text-text-muted">Halaman Dokumentasi - Dalam pengembangan</div>} />
+            <Route path="/sop" element={<div className="p-6 text-text-muted">Halaman SOP - Dalam pengembangan</div>} />
+            <Route path="/laporan" element={<ReportsPage />} />
+            
+            {/* Account */}
+            <Route path="/profil" element={<SettingsPage />} />
           </Route>
         </Route>
 

@@ -9,7 +9,6 @@ import {
   ChevronRight,
   LogOut,
   User,
-  Settings,
 } from 'lucide-react';
 import { useAuth } from '@/contexts/AuthContext';
 import { NAV_ITEMS } from '@/constants/navigation';
@@ -160,20 +159,12 @@ export function Topbar({ sidebarCollapsed, onToggleSidebar, onMobileMenuOpen, no
                 <p className="text-xs text-text-muted">{user?.email}</p>
               </div>
               <Link
-                to="/settings"
+                to="/profil"
                 onClick={() => setDropdownOpen(false)}
                 className="flex items-center gap-2.5 px-4 py-2 text-sm text-text-secondary hover:bg-surface-muted hover:text-text-primary"
               >
                 <User className="h-4 w-4" />
                 Profil Saya
-              </Link>
-              <Link
-                to="/settings"
-                onClick={() => setDropdownOpen(false)}
-                className="flex items-center gap-2.5 px-4 py-2 text-sm text-text-secondary hover:bg-surface-muted hover:text-text-primary"
-              >
-                <Settings className="h-4 w-4" />
-                Pengaturan
               </Link>
               <div className="border-t border-border">
                 <button

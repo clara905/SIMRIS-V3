@@ -1,109 +1,191 @@
 /**
- * Dashboard Service — mock data until backend endpoints are available.
+ * Dashboard Service — STAFF (SATKER) role
+ * 
+ * Mock data for STAFF personal workspace until backend endpoints are available.
+ * Focuses on individual staff member's tasks, assignments, and personal activity.
  */
 
-export interface DashboardStats {
-  totalAset: number;
-  totalRisiko: number;
-  risikoKritis: number;
-  risikodalamPenanganan: number;
+// ─── STAFF Dashboard Types ───────────────────────────────────────────────────
+
+export interface StaffDashboardStats {
+  tugasSaya: number;           // Personal tasks assigned to this staff
+  asesmenAktif: number;        // Active risk assessments assigned to staff
+  asetTerkait: number;         // Assets related to staff's responsibility
+  butuhPerhatian: number;      // Items requiring staff's attention
 }
 
-export interface RiskDistribution {
-  level: string;
-  jumlah: number;
-  color: string;
-}
-
-export interface RecentRisk {
+export interface StaffTask {
   id: number;
   nama: string;
-  aset: string;
-  level: 'critical' | 'high' | 'medium' | 'low';
-  status: string;
-  tanggal: string;
+  deskripsi?: string;
+  prioritas: 'tinggi' | 'sedang' | 'rendah';
+  tenggat: string;             // Deadline date
+  status: 'baru' | 'dalam_proses' | 'selesai';
 }
 
-export interface ActivityItem {
+export interface StaffRecentActivity {
   id: number;
-  aksi: string;
-  pelaku: string;
-  waktu: string;
-  tipe: 'create' | 'update' | 'delete' | 'login';
+  aksi: string;                // Description of action performed
+  waktu: string;               // Relative time (e.g., "2 jam lalu")
+  tipe: 'asesmen' | 'aset' | 'penanganan';
 }
 
-export interface Notification {
+export interface StaffNotification {
   id: number;
   judul: string;
   isi: string;
-  tipe: 'critical' | 'warning' | 'info';
+  tipe: 'penting' | 'peringatan' | 'info';
   dibaca: boolean;
   waktu: string;
 }
 
-const MOCK_STATS: DashboardStats = {
-  totalAset: 142,
-  totalRisiko: 38,
-  risikoKritis: 7,
-  risikodalamPenanganan: 15,
+// ─── Mock Data ───────────────────────────────────────────────────────────────
+
+const MOCK_STAFF_STATS: StaffDashboardStats = {
+  tugasSaya: 5,
+  asesmenAktif: 3,
+  asetTerkait: 12,
+  butuhPerhatian: 2,
 };
 
-const MOCK_RISK_DISTRIBUTION: RiskDistribution[] = [
-  { level: 'Kritis', jumlah: 7, color: '#762127' },
-  { level: 'Tinggi', jumlah: 11, color: '#DC2626' },
-  { level: 'Sedang', jumlah: 13, color: '#D97706' },
-  { level: 'Rendah', jumlah: 7, color: '#16A34A' },
+const MOCK_STAFF_TASKS: StaffTask[] = [
+  {
+    id: 1,
+    nama: 'Asesmen Risiko Sistem Email',
+    deskripsi: 'Lakukan penilaian risiko untuk sistem email internal',
+    prioritas: 'tinggi',
+    tenggat: '2026-12-15',
+    status: 'dalam_proses',
+  },
+  {
+    id: 2,
+    nama: 'Update Data Aset Server',
+    deskripsi: 'Perbarui informasi aset server database',
+    prioritas: 'sedang',
+    tenggat: '2026-12-20',
+    status: 'baru',
+  },
+  {
+    id: 3,
+    nama: 'Review Rencana Penanganan Risiko',
+    deskripsi: 'Tinjau dan berikan input untuk penanganan risiko',
+    prioritas: 'sedang',
+    tenggat: '2026-12-18',
+    status: 'dalam_proses',
+  },
+  {
+    id: 4,
+    nama: 'Dokumentasi SOP Backup',
+    deskripsi: 'Lengkapi dokumentasi SOP backup harian',
+    prioritas: 'rendah',
+    tenggat: '2026-12-25',
+    status: 'baru',
+  },
+  {
+    id: 5,
+    nama: 'Verifikasi Data Aset Hardware',
+    prioritas: 'tinggi',
+    tenggat: '2026-12-12',
+    status: 'dalam_proses',
+  },
 ];
 
-const MOCK_RECENT_RISKS: RecentRisk[] = [
-  { id: 1, nama: 'Akses tidak sah ke sistem keuangan', aset: 'Sistem Keuangan', level: 'critical', status: 'Dalam Penanganan', tanggal: '2026-11-20' },
-  { id: 2, nama: 'Kebocoran data pegawai melalui email', aset: 'Server Email', level: 'high', status: 'Draft', tanggal: '2026-11-19' },
-  { id: 3, nama: 'Pemadaman layanan jaringan internal', aset: 'Jaringan LAN', level: 'high', status: 'Disetujui', tanggal: '2026-11-18' },
-  { id: 4, nama: 'Software usang pada workstation', aset: 'Workstation Keuangan', level: 'medium', status: 'Draft', tanggal: '2026-11-17' },
-  { id: 5, nama: 'Password default tidak diganti', aset: 'Router Gateway', level: 'medium', status: 'Dalam Penanganan', tanggal: '2026-11-16' },
+const MOCK_STAFF_ACTIVITIES: StaffRecentActivity[] = [
+  {
+    id: 1,
+    aksi: 'Menyelesaikan asesmen risiko untuk Sistem Keuangan',
+    waktu: '30 menit lalu',
+    tipe: 'asesmen',
+  },
+  {
+    id: 2,
+    aksi: 'Memperbarui data aset: Laptop Dell Latitude 5420',
+    waktu: '2 jam lalu',
+    tipe: 'aset',
+  },
+  {
+    id: 3,
+    aksi: 'Menambahkan rencana mitigasi untuk risiko keamanan jaringan',
+    waktu: '1 hari lalu',
+    tipe: 'penanganan',
+  },
+  {
+    id: 4,
+    aksi: 'Mengupload dokumentasi SOP instalasi software',
+    waktu: '1 hari lalu',
+    tipe: 'aset',
+  },
+  {
+    id: 5,
+    aksi: 'Memulai asesmen risiko untuk Server Email',
+    waktu: '2 hari lalu',
+    tipe: 'asesmen',
+  },
 ];
 
-const MOCK_ACTIVITIES: ActivityItem[] = [
-  { id: 1, aksi: 'Menambahkan aset baru: Laptop Dell Latitude', pelaku: 'Admin Satker', waktu: '10 menit lalu', tipe: 'create' },
-  { id: 2, aksi: 'Memperbarui penilaian risiko ID #12', pelaku: 'Kepala Bidang TI', waktu: '1 jam lalu', tipe: 'update' },
-  { id: 3, aksi: 'Menghapus ancaman: Phishing Email (duplikat)', pelaku: 'Super Admin', waktu: '2 jam lalu', tipe: 'delete' },
-  { id: 4, aksi: 'Login ke sistem', pelaku: 'Kepala Satker', waktu: '3 jam lalu', tipe: 'login' },
-  { id: 5, aksi: 'Menambahkan penanganan risiko baru', pelaku: 'Staff TI', waktu: '5 jam lalu', tipe: 'create' },
+const MOCK_STAFF_NOTIFICATIONS: StaffNotification[] = [
+  {
+    id: 1,
+    judul: 'Tenggat Asesmen Mendekati',
+    isi: 'Asesmen risiko sistem email harus diselesaikan dalam 3 hari.',
+    tipe: 'penting',
+    dibaca: false,
+    waktu: '1 jam lalu',
+  },
+  {
+    id: 2,
+    judul: 'Update Data Aset Diperlukan',
+    isi: 'Mohon perbarui data aset server database sebelum 20 Desember.',
+    tipe: 'peringatan',
+    dibaca: false,
+    waktu: '5 jam lalu',
+  },
+  {
+    id: 3,
+    judul: 'SOP Baru Tersedia',
+    isi: 'SOP terbaru untuk pengelolaan backup telah dipublikasikan.',
+    tipe: 'info',
+    dibaca: true,
+    waktu: '1 hari lalu',
+  },
 ];
 
-const MOCK_NOTIFICATIONS: Notification[] = [
-  { id: 1, judul: 'Risiko Kritis Belum Ditangani', isi: '7 risiko kritis memerlukan perhatian segera.', tipe: 'critical', dibaca: false, waktu: '1 jam lalu' },
-  { id: 2, judul: 'Penanganan Risiko Terlambat', isi: '3 rencana penanganan melewati tenggat waktu.', tipe: 'warning', dibaca: false, waktu: '3 jam lalu' },
-  { id: 3, judul: 'Penilaian Risiko Triwulan', isi: 'Jadwal penilaian risiko triwulan 4 mendekati.', tipe: 'info', dibaca: true, waktu: '1 hari lalu' },
-];
+// ─── Service ─────────────────────────────────────────────────────────────────
 
 function delay(ms = 500): Promise<void> {
   return new Promise((r) => setTimeout(r, ms));
 }
 
 export const dashboardService = {
-  async getStats(): Promise<DashboardStats> {
+  /**
+   * Get STAFF personal dashboard statistics
+   */
+  async getStaffStats(): Promise<StaffDashboardStats> {
     await delay();
-    return MOCK_STATS;
+    return MOCK_STAFF_STATS;
   },
 
-  async getRiskDistribution(): Promise<RiskDistribution[]> {
+  /**
+   * Get STAFF assigned tasks
+   */
+  async getStaffTasks(): Promise<StaffTask[]> {
     await delay(400);
-    return MOCK_RISK_DISTRIBUTION;
+    return MOCK_STAFF_TASKS;
   },
 
-  async getRecentRisks(): Promise<RecentRisk[]> {
-    await delay(400);
-    return MOCK_RECENT_RISKS;
-  },
-
-  async getActivities(): Promise<ActivityItem[]> {
+  /**
+   * Get STAFF recent personal activities
+   */
+  async getStaffActivities(): Promise<StaffRecentActivity[]> {
     await delay(300);
-    return MOCK_ACTIVITIES;
+    return MOCK_STAFF_ACTIVITIES;
   },
 
-  async getNotifications(): Promise<Notification[]> {
+  /**
+   * Get STAFF notifications
+   */
+  async getStaffNotifications(): Promise<StaffNotification[]> {
     await delay(300);
-    return MOCK_NOTIFICATIONS;
+    return MOCK_STAFF_NOTIFICATIONS;
   },
 };
