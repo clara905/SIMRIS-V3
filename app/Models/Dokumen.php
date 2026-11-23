@@ -5,6 +5,7 @@ namespace App\Models;
 use Illuminate\Database\Eloquent\Attributes\Fillable;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Database\Eloquent\Relations\HasMany;
 
 #[Fillable([
     'unit_pemilik_id',
@@ -51,5 +52,10 @@ class Dokumen extends Model
             User::class,
             'dibuat_oleh'
         );
+    }
+
+    public function buktiKondisiAset(): HasMany
+    {
+        return $this->hasMany(BuktiKondisiAset::class, 'dokumen_id');
     }
 }

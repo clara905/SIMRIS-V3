@@ -59,6 +59,11 @@ class User extends Authenticatable
         return $this->hasMany(PeriodePenilaian::class, 'dibuat_oleh');
     }
 
+    public function penilaianRisikoDibuat(): HasMany
+    {
+        return $this->hasMany(PenilaianRisiko::class, 'dinilai_oleh');
+    }
+
     public function asesmenRisikoDibuat(): HasMany
     {
         return $this->hasMany(AsesmenRisiko::class, 'dibuat_oleh');

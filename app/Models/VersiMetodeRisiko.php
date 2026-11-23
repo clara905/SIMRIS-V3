@@ -46,4 +46,9 @@ class VersiMetodeRisiko extends Model
     {
         return $this->hasMany(MatriksRisiko::class, 'versi_metode_id');
     }
+
+    public function asesmenRisiko(): HasMany
+    {
+        return $this->hasMany(AsesmenRisiko::class, 'versi_metode_id');
+    }
 }

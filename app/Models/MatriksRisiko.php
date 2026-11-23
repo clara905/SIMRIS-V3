@@ -5,6 +5,7 @@ namespace App\Models;
 use Illuminate\Database\Eloquent\Attributes\Fillable;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Database\Eloquent\Relations\HasMany;
 
 #[Fillable([
     'versi_metode_id',
@@ -44,6 +45,11 @@ class MatriksRisiko extends Model
     public function dampak(): BelongsTo
     {
         return $this->belongsTo(SkalaDampak::class, 'dampak_id');
+    }
+
+    public function penilaianRisiko(): HasMany
+    {
+        return $this->hasMany(PenilaianRisiko::class, 'matriks_id');
     }
 
     public function tingkatRisiko(): BelongsTo

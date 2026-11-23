@@ -7,6 +7,7 @@ use App\Models\Dokumen;
 use App\Models\KategoriAset;
 use App\Models\KlasifikasiInformasi;
 use App\Models\PenugasanAset;
+use App\Models\Risiko;
 use App\Models\SumberAset;
 use App\Models\VersiMetodeRisiko;
 use App\Policies\AsetPolicy;
@@ -15,6 +16,7 @@ use App\Policies\KategoriAsetPolicy;
 use App\Policies\KlasifikasiInformasiPolicy;
 use App\Policies\MetodeRisikoPolicy;
 use App\Policies\PenugasanAsetPolicy;
+use App\Policies\RisikoPolicy;
 use App\Policies\SumberAsetPolicy;
 use Illuminate\Support\Facades\Gate;
 use Illuminate\Support\ServiceProvider;
@@ -46,6 +48,10 @@ class AppServiceProvider extends ServiceProvider
         Gate::policy(
             VersiMetodeRisiko::class,
             MetodeRisikoPolicy::class
+        );
+
+        Gate::policy(
+            Risiko::class, RisikoPolicy::class
         );
     }
 }

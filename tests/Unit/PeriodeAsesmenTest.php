@@ -69,6 +69,7 @@ class PeriodeAsesmenTest extends TestCase
             'versi_sebelumnya_id',
             'periode_id',
             'unit_id',
+            'versi_metode_id',
             'dibuat_oleh',
             'tujuan',
             'ruang_lingkup',
@@ -82,6 +83,7 @@ class PeriodeAsesmenTest extends TestCase
         $this->assertSame('integer', $asesmen->getCasts()['versi_sebelumnya_id']);
         $this->assertSame('integer', $asesmen->getCasts()['periode_id']);
         $this->assertSame('integer', $asesmen->getCasts()['unit_id']);
+        $this->assertSame('integer', $asesmen->getCasts()['versi_metode_id']);
         $this->assertSame('integer', $asesmen->getCasts()['nomor_versi']);
         $this->assertSame('datetime', $asesmen->getCasts()['dibuat_pada']);
         $this->assertSame('datetime', $asesmen->getCasts()['dibekukan_pada']);
@@ -110,6 +112,7 @@ class PeriodeAsesmenTest extends TestCase
         $this->assertInstanceOf(BelongsTo::class, $asesmen->seri());
         $this->assertInstanceOf(BelongsTo::class, $asesmen->periode());
         $this->assertInstanceOf(BelongsTo::class, $asesmen->unit());
+        $this->assertInstanceOf(BelongsTo::class, $asesmen->versiMetode());
         $this->assertInstanceOf(BelongsTo::class, $asesmen->pembuat());
         $this->assertInstanceOf(BelongsTo::class, $asesmen->versiSebelumnya());
         $this->assertInstanceOf(HasMany::class, $asesmen->revisiBerikutnya());

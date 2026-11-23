@@ -12,6 +12,7 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
     'versi_sebelumnya_id',
     'periode_id',
     'unit_id',
+    'versi_metode_id',
     'dibuat_oleh',
     'tujuan',
     'ruang_lingkup',
@@ -33,6 +34,7 @@ class AsesmenRisiko extends Model
             'versi_sebelumnya_id' => 'integer',
             'periode_id' => 'integer',
             'unit_id' => 'integer',
+            'versi_metode_id' => 'integer',
             'dibuat_oleh' => 'integer',
             'nomor_versi' => 'integer',
             'dibuat_pada' => 'datetime',
@@ -55,6 +57,14 @@ class AsesmenRisiko extends Model
         return $this->belongsTo(UnitOrganisasi::class, 'unit_id');
     }
 
+    public function versiMetode(): BelongsTo
+    {
+        return $this->belongsTo(
+            VersiMetodeRisiko::class,
+            'versi_metode_id'
+        );
+    }
+
     public function pembuat(): BelongsTo
     {
         return $this->belongsTo(User::class, 'dibuat_oleh');
@@ -74,5 +84,10 @@ class AsesmenRisiko extends Model
             self::class,
             'versi_sebelumnya_id'
         );
+    }
+
+    public function risiko(): HasMany
+    {
+        return $this->hasMany(Risiko::class, 'asesmen_id');
     }
 }

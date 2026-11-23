@@ -8,6 +8,7 @@ use App\Http\Controllers\MetodeRisikoController;
 use App\Http\Controllers\PegawaiController;
 use App\Http\Controllers\PenempatanPegawaiController;
 use App\Http\Controllers\PengajuanAkunController;
+use App\Http\Controllers\PenilaianRisikoController;
 use App\Http\Controllers\PenugasanAsetController;
 use App\Http\Controllers\RoleAssignmentController;
 use App\Http\Controllers\SumberAsetController;
@@ -132,6 +133,16 @@ Route::prefix('v1')
         Route::get(
             '/administrasi/pengguna/{user}/role',
             [RoleAssignmentController::class, 'history']
+        );
+
+        Route::get(
+            '/risiko/{risiko}/penilaian',
+            [PenilaianRisikoController::class, 'index']
+        );
+
+        Route::post(
+            '/risiko/{risiko}/penilaian',
+            [PenilaianRisikoController::class, 'store']
         );
 
         Route::put(
