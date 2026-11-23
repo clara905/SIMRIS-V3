@@ -10,4 +10,6 @@ dist/
 .DS_Store
 Thumbs.db
 
+frontend/README.md
+
 npm-debug.log*
