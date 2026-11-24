@@ -8,6 +8,7 @@ use App\Models\Role;
 use App\Models\UnitOrganisasi;
 use App\Models\User;
 use App\Models\UserRoleScope;
+use App\Services\RoleScopeAssignmentService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\TestCase;
 
@@ -89,6 +90,84 @@ class PenempatanPegawaiApiTest extends TestCase
             'aksi' => 'CHANGE_PLACEMENT',
             'entitas' => 'penempatan_pegawai',
         ]);
+    }
+
+    public function test_super_admin_can_cancel_scheduled_transfer_and_restore_assignments(): void
+    {
+        $this->travelTo('2026-11-18 10:00:00');
+
+        $admin = $this->createUser();
+        $this->assignRole($admin, 'SUPER_ADMIN');
+
+        $pegawai = $this->createPegawai();
+        $target = $this->createUser();
+        $target->update(['pegawai_id' => $pegawai->id]);
+        $oldUnit = $this->createUnit('SATKER');
+        $newUnit = $this->createUnit('SATKER');
+        $staffRole = Role::create([
+            'kode' => 'STAFF',
+            'nama' => 'STAFF',
+        ]);
+        $oldScope = UserRoleScope::create([
+            'user_id' => $target->id,
+            'role_id' => $staffRole->id,
+            'unit_id' => $oldUnit->id,
+            'mulai' => '2026-01-01 00:00:00',
+            'selesai' => null,
+        ]);
+        $oldPlacement = $this->createPlacement(
+            $pegawai,
+            $oldUnit,
+            '2026-01-01'
+        );
+
+        $this->actingAs($admin);
+
+        $this->patchJson("/api/v1/pegawai/{$pegawai->id}/transfer", [
+            'unit_tujuan_id' => $newUnit->id,
+            'tanggal_efektif' => '2026-12-01',
+        ])->assertOk();
+
+        $scheduledPlacement = PenempatanPegawai::query()
+            ->where('pegawai_id', $pegawai->id)
+            ->where('unit_id', $newUnit->id)
+            ->firstOrFail();
+
+        $this->deleteJson("/api/v1/pegawai/{$pegawai->id}/transfer")
+            ->assertOk()
+            ->assertJsonPath('message', 'Transfer pegawai terjadwal berhasil dibatalkan.');
+
+        $this->assertDatabaseHas('penempatan_pegawai', [
+            'id' => $oldPlacement->id,
+            'unit_id' => $oldUnit->id,
+            'selesai' => null,
+        ]);
+        $this->assertDatabaseMissing('penempatan_pegawai', [
+            'id' => $scheduledPlacement->id,
+        ]);
+        $this->assertDatabaseHas('user_role_scope', [
+            'id' => $oldScope->id,
+            'unit_id' => $oldUnit->id,
+            'selesai' => null,
+        ]);
+        $this->assertDatabaseMissing('user_role_scope', [
+            'user_id' => $target->id,
+            'unit_id' => $newUnit->id,
+            'mulai' => '2026-12-01 00:00:00',
+        ]);
+        $this->assertDatabaseHas('log_audit', [
+            'aksi' => 'CANCEL_SCHEDULED_TRANSFER',
+            'entitas' => 'penempatan_pegawai',
+            'entitas_id' => $scheduledPlacement->id,
+        ]);
+
+        $newScope = app(RoleScopeAssignmentService::class)->assignRole(
+            $target,
+            'ADMIN_SATKER',
+            $oldUnit->id
+        );
+
+        $this->assertSame('ADMIN_SATKER', $newScope->role->kode);
     }
 
     public function test_admin_satker_can_transfer_pegawai_within_own_scope(): void

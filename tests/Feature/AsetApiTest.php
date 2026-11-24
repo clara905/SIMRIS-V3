@@ -4,6 +4,7 @@ namespace Tests\Feature;
 
 use App\Models\Aset;
 use App\Models\KategoriAset;
+use App\Models\KlasifikasiInformasi;
 use App\Models\LogAudit;
 use App\Models\Role;
 use App\Models\SumberAset;
@@ -411,11 +412,16 @@ class AsetApiTest extends TestCase
             ['kode' => 'ELEKTRONIK'],
             ['parent_id' => null, 'nama' => 'Peralatan Elektronik']
         );
+        $klasifikasi = KlasifikasiInformasi::firstOrCreate(
+            ['kode' => 'RAHASIA'],
+            ['nama' => 'Rahasia', 'deskripsi' => 'Informasi rahasia']
+        );
 
         return [
             'sumber_id' => $sumber->id,
             'unit_pemilik_id' => $unit->id,
             'kategori_id' => $kategori->id,
+            'klasifikasi_informasi_id' => $klasifikasi->id,
             'kode_aset' => fake()->unique()->bothify('AST-####'),
             'nama' => 'Laptop Operasional',
             'deskripsi' => 'Laptop untuk kegiatan operasional.',

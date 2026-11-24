@@ -98,6 +98,11 @@ Route::prefix('v1')
             [PenempatanPegawaiController::class, 'transfer']
         );
 
+        Route::delete(
+            '/pegawai/{pegawai}/transfer',
+            [PenempatanPegawaiController::class, 'cancelTransfer']
+        );
+
         Route::get(
             '/pegawai/{pegawai}/riwayat-penempatan',
             [PenempatanPegawaiController::class, 'history']

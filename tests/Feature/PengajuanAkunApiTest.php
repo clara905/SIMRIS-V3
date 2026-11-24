@@ -301,7 +301,7 @@ class PengajuanAkunApiTest extends TestCase
         ]);
     }
 
-    public function test_super_admin_can_approve_staff_without_unit_scope(): void
+    public function test_super_admin_can_approve_staff_with_placement_unit_scope(): void
     {
         $actor = $this->createUser();
         $this->createScope($actor, 'SUPER_ADMIN', null);
@@ -315,14 +315,14 @@ class PengajuanAkunApiTest extends TestCase
             "/api/v1/administrasi/pengajuan-akun/{$submission->id}/setujui",
             [
                 'role_code' => 'STAFF',
-                'unit_id' => null,
+                'unit_id' => $satker->id,
             ]
         )->assertOk();
 
         $this->assertDatabaseHas('user_role_scope', [
             'user_id' => $submission->user_id,
             'role_id' => Role::where('kode', 'STAFF')->value('id'),
-            'unit_id' => null,
+            'unit_id' => $satker->id,
             'selesai' => null,
         ]);
     }

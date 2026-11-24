@@ -58,7 +58,7 @@ class MetodeRisikoSeeder extends Seeder
             ];
 
             foreach ($kemungkinan as $nilai => $data) {
-                SkalaKemungkinan::updateOrCreate(
+                SkalaKemungkinan::firstOrCreate(
                     [
                         'versi_metode_id' => $versiId,
                         'nilai' => $nilai,
@@ -94,7 +94,7 @@ class MetodeRisikoSeeder extends Seeder
             ];
 
             foreach ($dampak as $nilai => $data) {
-                SkalaDampak::updateOrCreate(
+                SkalaDampak::firstOrCreate(
                     [
                         'versi_metode_id' => $versiId,
                         'nilai' => $nilai,
@@ -132,7 +132,7 @@ class MetodeRisikoSeeder extends Seeder
             $tingkatIds = [];
 
             foreach ($tingkatRisiko as $urutan => $data) {
-                $tingkat = TingkatRisiko::updateOrCreate(
+                $tingkat = TingkatRisiko::firstOrCreate(
                     [
                         'versi_metode_id' => $versiId,
                         'kode' => $data['kode'],
@@ -187,7 +187,7 @@ class MetodeRisikoSeeder extends Seeder
                         default => 5,
                     };
 
-                    MatriksRisiko::updateOrCreate(
+                    MatriksRisiko::firstOrCreate(
                         [
                             'versi_metode_id' => $versiId,
                             'kemungkinan_id' => $kemungkinanIds[$levelKemungkinan],

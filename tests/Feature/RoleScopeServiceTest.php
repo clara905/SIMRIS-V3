@@ -8,6 +8,7 @@ use App\Models\Role;
 use App\Models\UnitOrganisasi;
 use App\Models\User;
 use App\Models\UserRoleScope;
+use App\Services\PenempatanPegawaiService;
 use App\Services\RoleScopeService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use LogicException;
@@ -50,8 +51,6 @@ class RoleScopeServiceTest extends TestCase
         $user = $this->createUser($pegawai->id);
         $unit = $this->createUnit();
 
-        $this->createScope($user, $role, null);
-
         PenempatanPegawai::create([
             'pegawai_id' => $pegawai->id,
             'unit_id' => $unit->id,
@@ -59,8 +58,49 @@ class RoleScopeServiceTest extends TestCase
             'selesai' => null,
         ]);
 
+        $this->createScope($user, $role, $unit->id);
+
         $this->assertSame(
             $unit->id,
+            $this->service->getEffectiveUnitId($user)
+        );
+    }
+
+    public function test_inactive_future_destination_does_not_remove_current_staff_access(): void
+    {
+        $this->travelTo('2026-11-18 10:00:00');
+
+        $role = $this->createRole('STAFF');
+        $pegawai = $this->createPegawai();
+        $user = $this->createUser($pegawai->id);
+        $oldUnit = $this->createUnit();
+        $newUnit = $this->createUnit();
+
+        PenempatanPegawai::create([
+            'pegawai_id' => $pegawai->id,
+            'unit_id' => $oldUnit->id,
+            'mulai' => '2026-01-01',
+            'selesai' => null,
+        ]);
+
+        $this->createScope($user, $role, $oldUnit->id);
+
+        app(PenempatanPegawaiService::class)->transfer(
+            $pegawai,
+            $newUnit->id,
+            '2026-12-01'
+        );
+
+        $newUnit->update(['aktif' => false]);
+
+        $this->assertSame(
+            $oldUnit->id,
+            $this->service->getEffectiveUnitId($user)
+        );
+
+        $this->travelTo('2026-12-01 00:00:00');
+
+        $this->assertNull(
             $this->service->getEffectiveUnitId($user)
         );
     }
@@ -70,8 +110,9 @@ class RoleScopeServiceTest extends TestCase
         $role = $this->createRole('STAFF');
         $pegawai = $this->createPegawai();
         $user = $this->createUser($pegawai->id);
+        $unit = $this->createUnit();
 
-        $this->createScope($user, $role, null);
+        $this->createScope($user, $role, $unit->id);
 
         $this->assertNull(
             $this->service->getEffectiveUnitId($user)
@@ -82,8 +123,9 @@ class RoleScopeServiceTest extends TestCase
     {
         $role = $this->createRole('STAFF');
         $user = $this->createUser(null, false);
+        $unit = $this->createUnit();
 
-        $this->createScope($user, $role, null);
+        $this->createScope($user, $role, $unit->id);
 
         $this->assertNull(
             $this->service->getActiveScope($user)
@@ -100,8 +142,9 @@ class RoleScopeServiceTest extends TestCase
         ]);
 
         $user = $this->createUser($pegawai->id);
+        $unit = $this->createUnit();
 
-        $this->createScope($user, $role, null);
+        $this->createScope($user, $role, $unit->id);
 
         $this->assertNull(
             $this->service->getActiveScope($user)
@@ -119,14 +162,14 @@ class RoleScopeServiceTest extends TestCase
             'aktif' => false,
         ]);
 
-        $this->createScope($user, $role, null);
-
         PenempatanPegawai::create([
             'pegawai_id' => $pegawai->id,
             'unit_id' => $unit->id,
             'mulai' => today()->subDay(),
             'selesai' => null,
         ]);
+
+        $this->createScope($user, $role, $unit->id);
 
         $this->assertNull(
             $this->service->getEffectiveUnitId($user)
@@ -140,9 +183,10 @@ class RoleScopeServiceTest extends TestCase
 
         $superAdmin = $this->createUser();
         $staff = $this->createUser();
+        $unit = $this->createUnit();
 
         $this->createScope($superAdmin, $superAdminRole, null);
-        $this->createScope($staff, $staffRole, null);
+        $this->createScope($staff, $staffRole, $unit->id);
 
         $this->assertTrue(
             $this->service->hasGlobalAccess($superAdmin)
@@ -162,7 +206,7 @@ class RoleScopeServiceTest extends TestCase
 
         $unit = $this->createUnit();
 
-        $this->createScope($user, $roleStaff, null);
+        $this->createScope($user, $roleStaff, $unit->id);
         $this->createScope($user, $roleKasub, $unit->id);
 
         $this->expectException(LogicException::class);

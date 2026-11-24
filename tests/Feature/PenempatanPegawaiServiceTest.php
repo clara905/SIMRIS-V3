@@ -4,6 +4,7 @@ namespace Tests\Feature;
 
 use App\Models\Aset;
 use App\Models\KategoriAset;
+use App\Models\KlasifikasiInformasi;
 use App\Models\LogAudit;
 use App\Models\Pegawai;
 use App\Models\PenempatanPegawai;
@@ -128,7 +129,7 @@ class PenempatanPegawaiServiceTest extends TestCase
 
     public function test_scheduled_transfer_preserves_old_effective_unit_until_effective_date(): void
     {
-        Carbon::setTestNow('2026-11-18 10:00:00');
+        $this->travelTo('2026-11-18 10:00:00');
 
         $pegawai = $this->createPegawai();
 
@@ -145,7 +146,7 @@ class PenempatanPegawaiServiceTest extends TestCase
         UserRoleScope::create([
             'user_id' => $user->id,
             'role_id' => $staffRole->id,
-            'unit_id' => null,
+            'unit_id' => $oldUnit->id,
             'mulai' => now(),
             'selesai' => null,
         ]);
@@ -163,6 +164,8 @@ class PenempatanPegawaiServiceTest extends TestCase
         );
 
         $oldPlacement->refresh();
+        $roleScopeService = app(RoleScopeService::class);
+        $activeScope = $roleScopeService->getActiveScope($user);
 
         $this->assertSame(
             '2026-11-30',
@@ -173,8 +176,17 @@ class PenempatanPegawaiServiceTest extends TestCase
             '2026-12-01',
             $newPlacement->mulai->toDateString()
         );
+        $this->assertSame($oldUnit->id, $activeScope?->unit_id);
 
-        $roleScopeService = app(RoleScopeService::class);
+        $oldScope = UserRoleScope::query()
+            ->where('user_id', $user->id)
+            ->where('unit_id', $oldUnit->id)
+            ->firstOrFail();
+
+        $this->assertSame(
+            '2026-12-01 00:00:00',
+            $oldScope->selesai->toDateTimeString()
+        );
 
         // Sebelum tanggal efektif, STAFF masih menggunakan unit lama.
         $this->assertSame(
@@ -182,13 +194,426 @@ class PenempatanPegawaiServiceTest extends TestCase
             $roleScopeService->getEffectiveUnitId($user)
         );
 
+        $this->travelTo('2026-11-30 23:59:59');
+
+        $this->assertSame(
+            $oldUnit->id,
+            $roleScopeService->getActiveScope($user)?->unit_id
+        );
+
         // Tepat pada tanggal efektif, unit STAFF berpindah.
-        Carbon::setTestNow('2026-12-01 00:00:00');
+        $this->travelTo('2026-12-01 00:00:00');
 
         $this->assertSame(
             $newUnit->id,
             $roleScopeService->getEffectiveUnitId($user)
         );
+        $this->assertSame(
+            $newUnit->id,
+            $roleScopeService->getActiveScope($user)?->unit_id
+        );
+
+        $this->assertDatabaseHas('user_role_scope', [
+            'user_id' => $user->id,
+            'role_id' => $staffRole->id,
+            'unit_id' => $newUnit->id,
+            'selesai' => null,
+        ]);
+
+        $this->assertDatabaseHas('log_audit', [
+            'aksi' => 'CHANGE_ROLE',
+            'entitas' => 'user_role_scope',
+        ]);
+
+        $scopeAudit = LogAudit::query()
+            ->where('aksi', 'CHANGE_ROLE')
+            ->firstOrFail();
+
+        $this->assertSame(
+            $oldUnit->id,
+            $scopeAudit->data_lama['unit_id']
+        );
+        $this->assertSame(
+            $newUnit->id,
+            $scopeAudit->data_baru['unit_id']
+        );
+        $this->assertSame(
+            '2026-12-01',
+            Carbon::parse($scopeAudit->data_baru['mulai'])->toDateString()
+        );
+    }
+
+    public function test_cancelling_scheduled_transfer_restores_asset_assignment(): void
+    {
+        $this->travelTo('2026-02-01 10:00:00');
+
+        $pegawai = $this->createPegawai();
+        $oldUnit = $this->createUnit();
+        $newUnit = $this->createUnit();
+        $oldPlacement = $this->createPlacement(
+            $pegawai,
+            $oldUnit,
+            '2026-01-01'
+        );
+        $aset = $this->createAssetForTransferTest($oldUnit);
+        $assignment = $this->createAssetAssignmentForTransferTest(
+            $aset,
+            $pegawai,
+            '2026-01-15'
+        );
+
+        $scheduledPlacement = $this->service->transfer(
+            $pegawai,
+            $newUnit->id,
+            '2026-06-01'
+        );
+
+        $this->assertTrue(
+            PenugasanAset::query()
+                ->whereKey($assignment->id)
+                ->whereDate('selesai', '2026-05-31')
+                ->exists()
+        );
+
+        $restoredPlacement = $this->service->cancelScheduledTransfer($pegawai);
+
+        $this->assertSame($oldPlacement->id, $restoredPlacement->id);
+        $this->assertDatabaseHas('penempatan_pegawai', [
+            'id' => $oldPlacement->id,
+            'selesai' => null,
+        ]);
+        $this->assertDatabaseMissing('penempatan_pegawai', [
+            'id' => $scheduledPlacement->id,
+        ]);
+        $this->assertDatabaseHas('penugasan_aset', [
+            'id' => $assignment->id,
+            'selesai' => null,
+        ]);
+        $this->assertDatabaseHas('log_audit', [
+            'aksi' => 'RESTORE_ASSET_ASSIGNMENT',
+            'entitas_id' => $assignment->id,
+        ]);
+        $this->assertDatabaseHas('log_audit', [
+            'aksi' => 'CANCEL_SCHEDULED_TRANSFER',
+            'entitas_id' => $scheduledPlacement->id,
+        ]);
+    }
+
+    public function test_cancelling_scheduled_transfer_rolls_back_when_audit_fails(): void
+    {
+        $this->travelTo('2026-02-01 10:00:00');
+
+        $pegawai = $this->createPegawai();
+        $oldUnit = $this->createUnit();
+        $newUnit = $this->createUnit();
+        $user = $this->createUser($pegawai);
+        $staffRole = Role::create([
+            'kode' => 'STAFF',
+            'nama' => 'Staff',
+        ]);
+        $scope = UserRoleScope::create([
+            'user_id' => $user->id,
+            'role_id' => $staffRole->id,
+            'unit_id' => $oldUnit->id,
+            'mulai' => '2026-01-01 00:00:00',
+            'selesai' => null,
+        ]);
+        $oldPlacement = $this->createPlacement(
+            $pegawai,
+            $oldUnit,
+            '2026-01-01'
+        );
+        $aset = $this->createAssetForTransferTest($oldUnit);
+        $assignment = $this->createAssetAssignmentForTransferTest(
+            $aset,
+            $pegawai,
+            '2026-01-15'
+        );
+        $scheduledPlacement = $this->service->transfer(
+            $pegawai,
+            $newUnit->id,
+            '2026-06-01'
+        );
+        $newScopeId = UserRoleScope::query()
+            ->where('user_id', $user->id)
+            ->where('unit_id', $newUnit->id)
+            ->value('id');
+
+        $auditService = Mockery::mock(AuditService::class);
+        $auditService
+            ->shouldReceive('record')
+            ->times(3)
+            ->andReturnUsing(function (...$arguments): LogAudit {
+                if ($arguments[0] === 'CANCEL_SCHEDULED_TRANSFER') {
+                    throw new RuntimeException('Audit pembatalan gagal.');
+                }
+
+                return new LogAudit;
+            });
+
+        $this->app->instance(AuditService::class, $auditService);
+        $service = app(PenempatanPegawaiService::class);
+
+        try {
+            $service->cancelScheduledTransfer($pegawai);
+
+            $this->fail(
+                'Pembatalan seharusnya gagal ketika audit tidak dapat disimpan.'
+            );
+        } catch (RuntimeException $exception) {
+            $this->assertSame(
+                'Audit pembatalan gagal.',
+                $exception->getMessage()
+            );
+        }
+
+        $this->assertTrue(
+            PenempatanPegawai::query()
+                ->whereKey($oldPlacement->id)
+                ->whereDate('selesai', '2026-05-31')
+                ->exists()
+        );
+        $this->assertDatabaseHas('penempatan_pegawai', [
+            'id' => $scheduledPlacement->id,
+            'selesai' => null,
+        ]);
+        $this->assertDatabaseHas('user_role_scope', [
+            'id' => $scope->id,
+            'selesai' => '2026-06-01 00:00:00',
+        ]);
+        $this->assertDatabaseHas('user_role_scope', [
+            'id' => $newScopeId,
+            'unit_id' => $newUnit->id,
+            'selesai' => null,
+        ]);
+        $this->assertDatabaseHas('penugasan_aset', [
+            'id' => $assignment->id,
+            'selesai' => '2026-05-31 00:00:00',
+        ]);
+        $this->assertDatabaseMissing('log_audit', [
+            'aksi' => 'CANCEL_ROLE_SCOPE_TRANSFER',
+            'entitas_id' => $newScopeId,
+        ]);
+        $this->assertDatabaseMissing('log_audit', [
+            'aksi' => 'RESTORE_ASSET_ASSIGNMENT',
+            'entitas_id' => $assignment->id,
+        ]);
+        $this->assertDatabaseMissing('log_audit', [
+            'aksi' => 'CANCEL_SCHEDULED_TRANSFER',
+            'entitas_id' => $scheduledPlacement->id,
+        ]);
+    }
+
+    public function test_cancelling_transfer_is_rejected_when_destination_assets_are_assigned(): void
+    {
+        $this->travelTo('2026-02-01 10:00:00');
+
+        $pegawai = $this->createPegawai();
+        $oldUnit = $this->createUnit();
+        $newUnit = $this->createUnit();
+        $oldPlacement = $this->createPlacement(
+            $pegawai,
+            $oldUnit,
+            '2026-01-01'
+        );
+        $scheduledPlacement = $this->service->transfer(
+            $pegawai,
+            $newUnit->id,
+            '2026-06-01'
+        );
+        $destinationAsset = $this->createAssetForTransferTest($newUnit);
+        $assignment = $this->createAssetAssignmentForTransferTest(
+            $destinationAsset,
+            $pegawai,
+            '2026-06-01'
+        );
+
+        try {
+            $this->service->cancelScheduledTransfer($pegawai);
+
+            $this->fail(
+                'Pembatalan harus ditolak ketika unit tujuan sudah memiliki penugasan aset mendatang.'
+            );
+        } catch (LogicException $exception) {
+            $this->assertSame(
+                'Transfer tidak dapat dibatalkan karena sudah ada penugasan aset pada unit tujuan setelah tanggal efektif.',
+                $exception->getMessage()
+            );
+        }
+
+        $this->assertTrue(
+            PenempatanPegawai::query()
+                ->whereKey($oldPlacement->id)
+                ->whereDate('selesai', '2026-05-31')
+                ->exists()
+        );
+        $this->assertDatabaseHas('penempatan_pegawai', [
+            'id' => $scheduledPlacement->id,
+            'selesai' => null,
+        ]);
+        $this->assertDatabaseHas('penugasan_aset', [
+            'id' => $assignment->id,
+            'selesai' => null,
+        ]);
+        $this->assertDatabaseMissing('log_audit', [
+            'aksi' => 'CANCEL_SCHEDULED_TRANSFER',
+            'entitas_id' => $scheduledPlacement->id,
+        ]);
+    }
+
+    public function test_transfer_does_not_synchronize_a_future_staff_scope(): void
+    {
+        Carbon::setTestNow('2026-11-18 10:00:00');
+
+        $pegawai = $this->createPegawai();
+        $oldUnit = $this->createUnit();
+        $newUnit = $this->createUnit();
+        $user = $this->createUser($pegawai);
+        $staffRole = Role::create([
+            'kode' => 'STAFF',
+            'nama' => 'Staff',
+        ]);
+        $futureScope = UserRoleScope::create([
+            'user_id' => $user->id,
+            'role_id' => $staffRole->id,
+            'unit_id' => $oldUnit->id,
+            'mulai' => now()->addDay(),
+            'selesai' => null,
+        ]);
+
+        $this->createPlacement($pegawai, $oldUnit, '2026-01-01');
+
+        $this->service->transfer(
+            $pegawai,
+            $newUnit->id,
+            today()->toDateString()
+        );
+
+        $this->assertDatabaseHas('user_role_scope', [
+            'id' => $futureScope->id,
+            'user_id' => $user->id,
+            'role_id' => $staffRole->id,
+            'unit_id' => $oldUnit->id,
+            'selesai' => null,
+        ]);
+
+        $this->assertDatabaseMissing('log_audit', [
+            'aksi' => 'CHANGE_ROLE',
+            'entitas' => 'user_role_scope',
+        ]);
+    }
+
+    public function test_transfer_does_not_synchronize_scope_for_an_inactive_user(): void
+    {
+        $pegawai = $this->createPegawai();
+        $oldUnit = $this->createUnit();
+        $newUnit = $this->createUnit();
+        $user = $this->createUser($pegawai);
+        $staffRole = Role::create([
+            'kode' => 'STAFF',
+            'nama' => 'Staff',
+        ]);
+        $scope = UserRoleScope::create([
+            'user_id' => $user->id,
+            'role_id' => $staffRole->id,
+            'unit_id' => $oldUnit->id,
+            'mulai' => now()->subDay(),
+            'selesai' => null,
+        ]);
+        $this->createPlacement($pegawai, $oldUnit, '2026-01-01');
+        $user->update(['aktif' => false]);
+
+        $this->service->transfer(
+            $pegawai,
+            $newUnit->id,
+            today()->toDateString()
+        );
+
+        $this->assertDatabaseHas('user_role_scope', [
+            'id' => $scope->id,
+            'unit_id' => $oldUnit->id,
+            'selesai' => null,
+        ]);
+
+        $this->assertDatabaseMissing('log_audit', [
+            'aksi' => 'CHANGE_ROLE',
+            'entitas' => 'user_role_scope',
+        ]);
+    }
+
+    public function test_transfer_rolls_back_when_staff_scope_audit_fails(): void
+    {
+        $pegawai = $this->createPegawai();
+        $oldUnit = $this->createUnit();
+        $newUnit = $this->createUnit();
+        $user = $this->createUser($pegawai);
+        $staffRole = Role::create([
+            'kode' => 'STAFF',
+            'nama' => 'Staff',
+        ]);
+        $scope = UserRoleScope::create([
+            'user_id' => $user->id,
+            'role_id' => $staffRole->id,
+            'unit_id' => $oldUnit->id,
+            'mulai' => now()->subDay(),
+            'selesai' => null,
+        ]);
+        $oldPlacement = $this->createPlacement(
+            $pegawai,
+            $oldUnit,
+            '2026-01-01'
+        );
+
+        $auditService = Mockery::mock(AuditService::class);
+        $auditService
+            ->shouldReceive('record')
+            ->once()
+            ->andReturnUsing(function (...$arguments): LogAudit {
+                if ($arguments[0] === 'CHANGE_ROLE') {
+                    throw new RuntimeException('Scope audit gagal disimpan.');
+                }
+
+                return new LogAudit;
+            });
+
+        $this->app->instance(AuditService::class, $auditService);
+        $service = app(PenempatanPegawaiService::class);
+
+        try {
+            $service->transfer(
+                $pegawai,
+                $newUnit->id,
+                today()->toDateString()
+            );
+
+            $this->fail('Transfer seharusnya gagal saat audit scope gagal.');
+        } catch (RuntimeException $exception) {
+            $this->assertSame(
+                'Scope audit gagal disimpan.',
+                $exception->getMessage()
+            );
+        }
+
+        $this->assertDatabaseHas('penempatan_pegawai', [
+            'id' => $oldPlacement->id,
+            'unit_id' => $oldUnit->id,
+            'selesai' => null,
+        ]);
+
+        $this->assertDatabaseMissing('penempatan_pegawai', [
+            'pegawai_id' => $pegawai->id,
+            'unit_id' => $newUnit->id,
+        ]);
+
+        $this->assertDatabaseHas('user_role_scope', [
+            'id' => $scope->id,
+            'user_id' => $user->id,
+            'role_id' => $staffRole->id,
+            'unit_id' => $oldUnit->id,
+            'selesai' => null,
+        ]);
+
+        $this->assertSame(0, LogAudit::query()->count());
     }
 
     public function test_transfer_automatically_ends_old_unit_asset_assignments(): void
@@ -632,11 +1057,17 @@ class PenempatanPegawaiServiceTest extends TestCase
             'kode' => fake()->unique()->bothify('KAT-####'),
             'nama' => 'Kategori Pengujian',
         ]);
+        $klasifikasi = KlasifikasiInformasi::create([
+            'kode' => fake()->unique()->bothify('KLAS-####'),
+            'nama' => 'Klasifikasi Pengujian',
+            'deskripsi' => 'Klasifikasi untuk pengujian.',
+        ]);
 
         return Aset::query()->create([
             'sumber_id' => $sumber->id,
             'unit_pemilik_id' => $unit->id,
             'kategori_id' => $kategori->id,
+            'klasifikasi_informasi_id' => $klasifikasi->id,
             'kode_aset' => fake()->unique()->bothify('AST-####'),
             'nama' => 'Aset Pengujian',
             'deskripsi' => 'Aset untuk pengujian mutasi.',

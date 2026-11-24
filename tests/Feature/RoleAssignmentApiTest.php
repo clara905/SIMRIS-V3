@@ -8,6 +8,7 @@ use App\Models\Role;
 use App\Models\UnitOrganisasi;
 use App\Models\User;
 use App\Models\UserRoleScope;
+use App\Services\PenempatanPegawaiService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Laravel\Sanctum\Sanctum;
 use Tests\TestCase;
@@ -46,7 +47,7 @@ class RoleAssignmentApiTest extends TestCase
         $user = $this->createUser();
         $unit = $this->createUnit('SATKER');
 
-        $this->createScope($user, 'STAFF', null);
+        $this->createScope($user, 'STAFF', $unit->id);
 
         $pegawai = $this->createPegawai();
         $user->update(['pegawai_id' => $pegawai->id]);
@@ -181,6 +182,259 @@ class RoleAssignmentApiTest extends TestCase
             'role_id' => Role::where('kode', 'KABID')->value('id'),
             'unit_id' => $bidangB->id,
         ]);
+    }
+
+    public function test_admin_satker_a_cannot_manage_staff_after_transfer_to_satker_b(): void
+    {
+        $adminA = $this->createUser();
+        $satkerA = $this->createUnit('SATKER');
+        $bidangA = $this->createUnit('BIDANG', $satkerA->id);
+        $satkerB = $this->createUnit('SATKER');
+        $pegawai = $this->createPegawai();
+        $target = $this->createUser($pegawai->id);
+
+        $this->createScope($adminA, 'ADMIN_SATKER', $satkerA->id);
+        $this->createScope($target, 'STAFF', $satkerA->id);
+        $this->createPlacement($pegawai, $satkerA);
+
+        app(PenempatanPegawaiService::class)->transfer(
+            $pegawai,
+            $satkerB->id,
+            today()->toDateString()
+        );
+
+        $this->assertDatabaseHas('penempatan_pegawai', [
+            'pegawai_id' => $pegawai->id,
+            'unit_id' => $satkerB->id,
+            'selesai' => null,
+        ]);
+
+        Sanctum::actingAs($adminA);
+
+        $this->putJson(
+            "/api/v1/administrasi/pengguna/{$target->id}/role",
+            [
+                'role_code' => 'KABID',
+                'unit_id' => $bidangA->id,
+            ]
+        )->assertForbidden();
+
+        $this->assertDatabaseMissing('user_role_scope', [
+            'user_id' => $target->id,
+            'role_id' => Role::where('kode', 'KABID')->value('id'),
+            'unit_id' => $bidangA->id,
+            'selesai' => null,
+        ]);
+
+        $this->assertDatabaseHas('user_role_scope', [
+            'user_id' => $target->id,
+            'role_id' => Role::where('kode', 'STAFF')->value('id'),
+            'unit_id' => $satkerB->id,
+            'selesai' => null,
+        ]);
+
+        $this->assertDatabaseHas('penempatan_pegawai', [
+            'pegawai_id' => $pegawai->id,
+            'unit_id' => $satkerB->id,
+        ]);
+    }
+
+    public function test_admin_satker_b_can_manage_staff_after_transfer_to_satker_b(): void
+    {
+        $adminB = $this->createUser();
+        $satkerA = $this->createUnit('SATKER');
+        $satkerB = $this->createUnit('SATKER');
+        $bidangB = $this->createUnit('BIDANG', $satkerB->id);
+        $pegawai = $this->createPegawai();
+        $target = $this->createUser($pegawai->id);
+
+        $this->createScope($adminB, 'ADMIN_SATKER', $satkerB->id);
+        $this->createScope($target, 'STAFF', $satkerA->id);
+        $this->createPlacement($pegawai, $satkerA);
+
+        app(PenempatanPegawaiService::class)->transfer(
+            $pegawai,
+            $satkerB->id,
+            today()->toDateString()
+        );
+
+        Sanctum::actingAs($adminB);
+
+        $this->putJson(
+            "/api/v1/administrasi/pengguna/{$target->id}/role",
+            [
+                'role_code' => 'KABID',
+                'unit_id' => $bidangB->id,
+            ]
+        )->assertOk();
+
+        $this->assertDatabaseHas('user_role_scope', [
+            'user_id' => $target->id,
+            'role_id' => Role::where('kode', 'KABID')->value('id'),
+            'unit_id' => $bidangB->id,
+            'selesai' => null,
+        ]);
+    }
+
+    public function test_role_history_and_management_scope_follow_the_scheduled_transfer_date(): void
+    {
+        $this->travelTo('2026-11-18 10:00:00');
+
+        $adminA = $this->createUser();
+        $adminB = $this->createUser();
+        $satkerA = $this->createUnit('SATKER');
+        $satkerB = $this->createUnit('SATKER');
+        $pegawai = $this->createPegawai();
+        $target = $this->createUser($pegawai->id);
+
+        $this->createScope($adminA, 'ADMIN_SATKER', $satkerA->id);
+        $this->createScope($adminB, 'ADMIN_SATKER', $satkerB->id);
+        $this->createScope($target, 'STAFF', $satkerA->id);
+        $this->createPlacement($pegawai, $satkerA);
+
+        app(PenempatanPegawaiService::class)->transfer(
+            $pegawai,
+            $satkerB->id,
+            '2026-12-01'
+        );
+
+        Sanctum::actingAs($adminA);
+
+        $this->getJson("/api/v1/administrasi/pengguna/{$target->id}/role")
+            ->assertOk()
+            ->assertJsonPath('data.0.unit.id', $satkerB->id)
+            ->assertJsonPath('data.0.aktif', false)
+            ->assertJsonPath('data.1.unit.id', $satkerA->id)
+            ->assertJsonPath('data.1.aktif', true);
+
+        Sanctum::actingAs($adminB);
+
+        $this->getJson("/api/v1/administrasi/pengguna/{$target->id}/role")
+            ->assertForbidden();
+
+        $this->travelTo('2026-12-01 00:00:00');
+
+        Sanctum::actingAs($adminA);
+
+        $this->getJson("/api/v1/administrasi/pengguna/{$target->id}/role")
+            ->assertForbidden();
+
+        Sanctum::actingAs($adminB);
+
+        $this->getJson("/api/v1/administrasi/pengguna/{$target->id}/role")
+            ->assertOk()
+            ->assertJsonPath('data.0.unit.id', $satkerB->id)
+            ->assertJsonPath('data.0.aktif', true)
+            ->assertJsonPath('data.1.unit.id', $satkerA->id)
+            ->assertJsonPath('data.1.aktif', false);
+    }
+
+    public function test_admin_satker_cannot_manage_staff_without_active_placement(): void
+    {
+        $admin = $this->createUser();
+        $satker = $this->createUnit('SATKER');
+        $bidang = $this->createUnit('BIDANG', $satker->id);
+        $pegawai = $this->createPegawai();
+        $target = $this->createUser($pegawai->id);
+
+        $this->createScope($admin, 'ADMIN_SATKER', $satker->id);
+        $this->createScope($target, 'STAFF', $satker->id);
+
+        Sanctum::actingAs($admin);
+
+        $this->putJson(
+            "/api/v1/administrasi/pengguna/{$target->id}/role",
+            [
+                'role_code' => 'KABID',
+                'unit_id' => $bidang->id,
+            ]
+        )->assertForbidden();
+
+        $this->assertDatabaseMissing('user_role_scope', [
+            'user_id' => $target->id,
+            'role_id' => Role::where('kode', 'KABID')->value('id'),
+            'unit_id' => $bidang->id,
+            'selesai' => null,
+        ]);
+    }
+
+    public function test_staff_cannot_assign_role(): void
+    {
+        $actor = $this->createUser();
+        $target = $this->createUser();
+        $satker = $this->createUnit('SATKER');
+
+        $this->createScope($actor, 'STAFF', $satker->id);
+
+        Sanctum::actingAs($actor);
+
+        $this->putJson(
+            "/api/v1/administrasi/pengguna/{$target->id}/role",
+            [
+                'role_code' => 'KASUB',
+                'unit_id' => $satker->id,
+            ]
+        )->assertForbidden();
+    }
+
+    public function test_admin_satker_cannot_use_fake_unit_id_outside_scope(): void
+    {
+        $actor = $this->createUser();
+        $pegawai = $this->createPegawai();
+        $target = $this->createUser($pegawai->id);
+        $satkerA = $this->createUnit('SATKER');
+        $satkerB = $this->createUnit('SATKER');
+        $bidangB = $this->createUnit('BIDANG', $satkerB->id);
+
+        $this->createScope($actor, 'ADMIN_SATKER', $satkerA->id);
+        $this->createPlacement($pegawai, $satkerA);
+
+        Sanctum::actingAs($actor);
+
+        $this->putJson(
+            "/api/v1/administrasi/pengguna/{$target->id}/role",
+            [
+                'role_code' => 'KABID',
+                'unit_id' => $bidangB->id,
+            ]
+        )->assertForbidden();
+
+        $this->assertDatabaseMissing('user_role_scope', [
+            'user_id' => $target->id,
+            'role_id' => Role::where('kode', 'KABID')->value('id'),
+            'unit_id' => $bidangB->id,
+            'selesai' => null,
+        ]);
+    }
+
+    public function test_super_admin_keeps_global_assignment_access_after_transfer(): void
+    {
+        $superAdmin = $this->createUser();
+        $satkerA = $this->createUnit('SATKER');
+        $satkerB = $this->createUnit('SATKER');
+        $bidangB = $this->createUnit('BIDANG', $satkerB->id);
+        $pegawai = $this->createPegawai();
+        $target = $this->createUser($pegawai->id);
+
+        $this->createScope($superAdmin, 'SUPER_ADMIN', null);
+        $this->createScope($target, 'STAFF', $satkerA->id);
+        $this->createPlacement($pegawai, $satkerA);
+
+        app(PenempatanPegawaiService::class)->transfer(
+            $pegawai,
+            $satkerB->id,
+            today()->toDateString()
+        );
+
+        Sanctum::actingAs($superAdmin);
+
+        $this->putJson(
+            "/api/v1/administrasi/pengguna/{$target->id}/role",
+            [
+                'role_code' => 'KABID',
+                'unit_id' => $bidangB->id,
+            ]
+        )->assertOk();
     }
 
     public function test_admin_satker_cannot_assign_admin_satker_role(): void

@@ -9,6 +9,16 @@ class PenugasanAsetResource extends JsonResource
 {
     public function toArray(Request $request): array
     {
+        $today = today();
+
+        $status = $this->mulai->gt($today)
+            ? 'AKAN_DATANG'
+            : (
+                $this->selesai === null || $this->selesai->gte($today)
+                    ? 'AKTIF'
+                    : 'SELESAI'
+            );
+
         return [
             'id' => $this->id,
             'aset_idx' => $this->aset_idx,
@@ -23,7 +33,7 @@ class PenugasanAsetResource extends JsonResource
             'jenis_tanggung_jawab' => $this->jenis_tanggung_jawab,
             'mulai' => $this->mulai?->toDateString(),
             'selesai' => $this->selesai?->toDateString(),
-            'status' => $this->selesai === null ? 'AKTIF' : 'SELESAI',
+            'status' => $status,
         ];
     }
 }

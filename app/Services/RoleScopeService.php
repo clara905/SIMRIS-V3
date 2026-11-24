@@ -27,10 +27,15 @@ class RoleScopeService
             }
         }
 
+        $now = now();
+
         $scopes = $user->roleScopes()
             ->with(['role', 'unit'])
-            ->where('mulai', '<=', now())
-            ->whereNull('selesai')
+            ->where('mulai', '<=', $now)
+            ->where(function ($query) use ($now) {
+                $query->whereNull('selesai')
+                    ->orWhere('selesai', '>', $now);
+            })
             ->get();
 
         if ($scopes->count() > 1) {
@@ -102,19 +107,44 @@ class RoleScopeService
         }
 
         if ($roleCode === 'STAFF') {
-            if ($scope->unit_id !== null) {
-                throw new LogicException(
-                    'STAFF harus mengambil unit dari penempatan aktif.'
-                );
-            }
-
             return $this->getActivePlacementUnitId($user);
         }
 
         if ($scope->unit_id === null) {
             throw new LogicException(
-                'Role selain SUPER_ADMIN dan STAFF wajib memiliki unit_id.'
+                'Role selain SUPER_ADMIN wajib memiliki unit_id.'
             );
+        }
+
+        if (! $scope->unit || ! $scope->unit->aktif) {
+            return null;
+        }
+
+        return (int) $scope->unit_id;
+    }
+
+    /**
+     * Mengambil unit efektif untuk pengguna sebagai target pengelolaan role.
+     *
+     * STAFF selalu mengikuti penempatan aktif. Pengguna tanpa role aktif
+     * juga boleh dinilai berdasarkan penempatan aktifnya.
+     */
+    public function getTargetEffectiveUnitId(User $user): ?int
+    {
+        $scope = $this->getActiveScope($user);
+
+        if (! $scope) {
+            return $this->getActivePlacementUnitId($user);
+        }
+
+        $roleCode = $scope->role?->kode;
+
+        if ($roleCode === 'STAFF') {
+            return $this->getActivePlacementUnitId($user);
+        }
+
+        if ($roleCode === 'SUPER_ADMIN') {
+            return null;
         }
 
         if (! $scope->unit || ! $scope->unit->aktif) {
@@ -127,19 +157,21 @@ class RoleScopeService
     /**
      * Mengambil unit dari penempatan pegawai yang masih aktif.
      */
-    private function getActivePlacementUnitId(User $user): ?int
+    public function getActivePlacementUnitId(User $user): ?int
     {
         if (! $user->pegawai_id || ! $user->pegawai?->aktif) {
             return null;
         }
 
+        $today = today();
+
         $placements = PenempatanPegawai::query()
             ->with('unit')
             ->where('pegawai_id', $user->pegawai_id)
-            ->whereDate('mulai', '<=', today())
-            ->where(function ($query) {
+            ->whereDate('mulai', '<=', $today)
+            ->where(function ($query) use ($today) {
                 $query->whereNull('selesai')
-                    ->orWhereDate('selesai', '>=', today());
+                    ->orWhereDate('selesai', '>=', $today);
             })
             ->get();
 

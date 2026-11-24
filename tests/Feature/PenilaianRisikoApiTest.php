@@ -406,7 +406,7 @@ class PenilaianRisikoApiTest extends TestCase
         UserRoleScope::create([
             'user_id' => $user->id,
             'role_id' => $role->id,
-            'unit_id' => null,
+            'unit_id' => $unit->id,
             'mulai' => now()->subDay(),
             'selesai' => null,
         ]);

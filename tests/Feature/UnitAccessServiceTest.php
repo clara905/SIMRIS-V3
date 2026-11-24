@@ -100,7 +100,7 @@ class UnitAccessServiceTest extends TestCase
         $bidang = $this->createUnit('BIDANG', $satker->id);
         $subbidang = $this->createUnit('SUBBIDANG', $bidang->id);
 
-        $this->createScope($user, 'STAFF', null);
+        $this->createScope($user, 'STAFF', $subbidang->id);
 
         PenempatanPegawai::create([
             'pegawai_id' => $pegawai->id,

@@ -4,6 +4,7 @@ namespace Tests\Feature;
 
 use App\Models\Aset;
 use App\Models\KategoriAset;
+use App\Models\KlasifikasiInformasi;
 use App\Models\LogAudit;
 use App\Models\Pegawai;
 use App\Models\PenempatanPegawai;
@@ -363,6 +364,73 @@ class PenugasanAsetApiTest extends TestCase
             ->assertJsonValidationErrors('tanggal_selesai');
     }
 
+    public function test_assignment_with_future_end_date_remains_active_until_that_date_passes(): void
+    {
+        $this->travelTo('2026-11-18 10:00:00');
+
+        $unit = $this->createUnit('SUBBIDANG');
+        $user = $this->createUserWithRole('KASUB', $unit);
+        $aset = $this->createAsset($unit);
+        $pegawai = $this->createEmployeeWithPlacement(
+            $unit,
+            '2026-01-01'
+        );
+        $assignment = $this->createAssignment(
+            $aset,
+            $pegawai,
+            '2026-01-15',
+            '2026-12-01'
+        );
+
+        Sanctum::actingAs($user);
+
+        $this->getJson("/api/v1/aset/{$aset->idx}/penugasan")
+            ->assertOk()
+            ->assertJsonPath('data.0.id', $assignment->id)
+            ->assertJsonPath('data.0.status', 'AKTIF');
+
+        $this->travelTo('2026-12-02 00:00:00');
+
+        $this->getJson("/api/v1/aset/{$aset->idx}/penugasan")
+            ->assertOk()
+            ->assertJsonPath('data.0.status', 'SELESAI');
+    }
+
+    public function test_future_assignment_end_date_can_be_corrected_before_it_is_reached(): void
+    {
+        $this->travelTo('2026-11-18 10:00:00');
+
+        $unit = $this->createUnit('SUBBIDANG');
+        $user = $this->createUserWithRole('KASUB', $unit);
+        $aset = $this->createAsset($unit);
+        $pegawai = $this->createEmployeeWithPlacement(
+            $unit,
+            '2026-01-01',
+            '2026-12-01'
+        );
+        $assignment = $this->createAssignment(
+            $aset,
+            $pegawai,
+            '2026-01-15',
+            '2026-12-01'
+        );
+
+        Sanctum::actingAs($user);
+
+        $this->patchJson(
+            "/api/v1/penugasan-aset/{$assignment->id}/akhiri",
+            ['tanggal_selesai' => '2026-11-25']
+        )
+            ->assertOk()
+            ->assertJsonPath('data.selesai', '2026-11-25')
+            ->assertJsonPath('data.status', 'AKTIF');
+
+        $this->assertDatabaseHas('penugasan_aset', [
+            'id' => $assignment->id,
+            'selesai' => '2026-11-25 00:00:00',
+        ]);
+    }
+
     private function createUnit(
         string $jenis,
         ?int $parentId = null
@@ -433,11 +501,16 @@ class PenugasanAsetApiTest extends TestCase
             ['kode' => 'ELEKTRONIK'],
             ['parent_id' => null, 'nama' => 'Peralatan Elektronik']
         );
+        $klasifikasi = KlasifikasiInformasi::firstOrCreate(
+            ['kode' => 'RAHASIA'],
+            ['nama' => 'Rahasia', 'deskripsi' => 'Informasi rahasia']
+        );
 
         return Aset::query()->create([
             'sumber_id' => $sumber->id,
             'unit_pemilik_id' => $unit->id,
             'kategori_id' => $kategori->id,
+            'klasifikasi_informasi_id' => $klasifikasi->id,
             'kode_aset' => fake()->unique()->bothify('AST-####'),
             'nama' => 'Laptop Pengujian',
             'deskripsi' => 'Aset untuk pengujian penugasan.',

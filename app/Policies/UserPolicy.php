@@ -204,7 +204,7 @@ class UserPolicy
                 return false;
             }
 
-            // Role selain STAFF menggunakan unit pada role scope.
+            // STAFF diverifikasi melalui penempatan aktifnya.
             if ($roleCode !== 'STAFF') {
                 return $scope->unit_id !== null
                     && in_array(

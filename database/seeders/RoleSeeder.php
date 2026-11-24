@@ -4,6 +4,7 @@ namespace Database\Seeders;
 
 use App\Models\Role;
 use Illuminate\Database\Seeder;
+use Illuminate\Support\Facades\DB;
 
 class RoleSeeder extends Seeder
 {
@@ -36,11 +37,13 @@ class RoleSeeder extends Seeder
             ],
         ];
 
-        foreach ($roles as $role) {
-            Role::updateOrCreate(
-                ['kode' => $role['kode']],
-                ['nama' => $role['nama']]
-            );
-        }
+        DB::transaction(function () use ($roles): void {
+            foreach ($roles as $role) {
+                Role::firstOrCreate(
+                    ['kode' => $role['kode']],
+                    ['nama' => $role['nama']]
+                );
+            }
+        });
     }
 }

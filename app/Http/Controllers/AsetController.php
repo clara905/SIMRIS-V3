@@ -65,7 +65,7 @@ class AsetController extends Controller
             'external_id' => ['nullable', 'string', 'max:255'],
             'unit_pemilik_id' => ['required', 'integer', 'exists:unit_organisasi,id'],
             'kategori_id' => ['required', 'integer', 'exists:kategori_aset,id'],
-            'klasifikasi_informasi_id' => ['nullable', 'integer', 'exists:klasifikasi_informasi,id'],
+            'klasifikasi_informasi_id' => ['required', 'integer', 'exists:klasifikasi_informasi,id'],
             'kode_aset' => ['required', 'string', 'max:255', 'unique:aset,kode_aset'],
             'nama' => ['required', 'string', 'max:255'],
             'deskripsi' => ['required', 'string'],
@@ -138,7 +138,7 @@ class AsetController extends Controller
             'external_id' => ['sometimes', 'nullable', 'string', 'max:255'],
             'unit_pemilik_id' => ['prohibited'],
             'kategori_id' => ['sometimes', 'required', 'integer', 'exists:kategori_aset,id'],
-            'klasifikasi_informasi_id' => ['sometimes', 'nullable', 'integer', 'exists:klasifikasi_informasi,id'],
+            'klasifikasi_informasi_id' => ['sometimes', 'required', 'integer', 'exists:klasifikasi_informasi,id'],
             'kode_aset' => [
                 'sometimes',
                 'required',

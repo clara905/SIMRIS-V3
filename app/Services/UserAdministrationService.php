@@ -255,9 +255,9 @@ class UserAdministrationService
         }
 
         if ($roleCode === 'STAFF') {
-            if ($scope->unit_id !== null) {
+            if ($scope->unit_id === null) {
                 throw new LogicException(
-                    'STAFF tidak boleh memiliki unit_id pada role scope.'
+                    'STAFF wajib memiliki unit_id pada role scope.'
                 );
             }
 
@@ -280,15 +280,6 @@ class UserAdministrationService
             if ($placements->count() !== 1) {
                 throw new LogicException(
                     'STAFF wajib memiliki tepat satu penempatan yang berlaku.'
-                );
-            }
-
-            if (
-                $this->roleScopeService
-                    ->getEffectiveUnitId($user) === null
-            ) {
-                throw new LogicException(
-                    'Unit penempatan STAFF tidak valid atau nonaktif.'
                 );
             }
 

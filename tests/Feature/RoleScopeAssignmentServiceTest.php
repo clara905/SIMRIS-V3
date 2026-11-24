@@ -4,10 +4,12 @@ namespace Tests\Feature;
 
 use App\Models\LogAudit;
 use App\Models\Pegawai;
+use App\Models\PenempatanPegawai;
 use App\Models\Role;
 use App\Models\UnitOrganisasi;
 use App\Models\User;
 use App\Services\AuditService;
+use App\Services\PenempatanPegawaiService;
 use App\Services\RoleScopeAssignmentService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use LogicException;
@@ -230,6 +232,7 @@ class RoleScopeAssignmentServiceTest extends TestCase
     {
         $pegawai = $this->createPegawai();
         $user = $this->createUser($pegawai->id);
+        $unit = $this->createUnit('SATKER');
 
         $this->expectException(LogicException::class);
         $this->expectExceptionMessage(
@@ -238,8 +241,146 @@ class RoleScopeAssignmentServiceTest extends TestCase
 
         $this->service->assignRole(
             $user,
-            'STAFF'
+            'STAFF',
+            $unit->id
         );
+    }
+
+    public function test_staff_role_scope_must_match_active_placement(): void
+    {
+        $pegawai = $this->createPegawai();
+        $user = $this->createUser($pegawai->id);
+        $placementUnit = $this->createUnit('SATKER');
+        $otherUnit = $this->createUnit('BIDANG');
+
+        PenempatanPegawai::create([
+            'pegawai_id' => $pegawai->id,
+            'unit_id' => $placementUnit->id,
+            'mulai' => today()->subDay(),
+            'selesai' => null,
+        ]);
+
+        $this->expectException(LogicException::class);
+        $this->expectExceptionMessage(
+            'Unit scope STAFF harus sesuai dengan penempatan aktifnya.'
+        );
+
+        $this->service->assignRole($user, 'STAFF', $otherUnit->id);
+    }
+
+    public function test_staff_receives_the_active_placement_as_its_unit_scope(): void
+    {
+        $pegawai = $this->createPegawai();
+        $user = $this->createUser($pegawai->id);
+        $unit = $this->createUnit('SATKER');
+
+        PenempatanPegawai::create([
+            'pegawai_id' => $pegawai->id,
+            'unit_id' => $unit->id,
+            'mulai' => today()->subDay(),
+            'selesai' => null,
+        ]);
+
+        $scope = $this->service->assignRole($user, 'STAFF', $unit->id);
+
+        $this->assertSame($unit->id, $scope->unit_id);
+    }
+
+    public function test_new_role_assignment_is_rejected_while_transfer_is_pending(): void
+    {
+        $this->travelTo('2026-11-18 10:00:00');
+
+        $pegawai = $this->createPegawai();
+        $user = $this->createUser($pegawai->id);
+        $oldUnit = $this->createUnit('SATKER');
+        $newUnit = $this->createUnit('SATKER');
+
+        PenempatanPegawai::create([
+            'pegawai_id' => $pegawai->id,
+            'unit_id' => $oldUnit->id,
+            'mulai' => '2026-01-01',
+            'selesai' => null,
+        ]);
+
+        app(PenempatanPegawaiService::class)->transfer(
+            $pegawai,
+            $newUnit->id,
+            '2026-12-01'
+        );
+
+        try {
+            $this->service->assignRole($user, 'KASATKER', $oldUnit->id);
+
+            $this->fail('Assignment role harus ditolak selama transfer pending.');
+        } catch (LogicException $exception) {
+            $this->assertSame(
+                'Role tidak dapat diubah selama transfer pegawai masih terjadwal.',
+                $exception->getMessage()
+            );
+        }
+
+        $this->assertDatabaseCount('user_role_scope', 0);
+        $this->assertTrue(
+            PenempatanPegawai::query()
+                ->where('pegawai_id', $pegawai->id)
+                ->where('unit_id', $newUnit->id)
+                ->whereDate('mulai', '2026-12-01')
+                ->whereNull('selesai')
+                ->exists()
+        );
+    }
+
+    public function test_role_and_unit_scope_changes_are_rejected_while_transfer_is_pending(): void
+    {
+        $this->travelTo('2026-11-18 10:00:00');
+
+        $pegawai = $this->createPegawai();
+        $user = $this->createUser($pegawai->id);
+        $oldUnit = $this->createUnit('SATKER');
+        $newUnit = $this->createUnit('SATKER');
+
+        PenempatanPegawai::create([
+            'pegawai_id' => $pegawai->id,
+            'unit_id' => $oldUnit->id,
+            'mulai' => '2026-01-01',
+            'selesai' => null,
+        ]);
+
+        $oldScope = $this->service->assignRole(
+            $user,
+            'STAFF',
+            $oldUnit->id
+        );
+
+        app(PenempatanPegawaiService::class)->transfer(
+            $pegawai,
+            $newUnit->id,
+            '2026-12-01'
+        );
+
+        foreach ([
+            ['KASATKER', $oldUnit->id],
+            ['STAFF', $newUnit->id],
+        ] as [$roleCode, $unitId]) {
+            try {
+                $this->service->assignRole($user, $roleCode, $unitId);
+
+                $this->fail('Perubahan role/scope harus ditolak saat transfer pending.');
+            } catch (LogicException $exception) {
+                $this->assertSame(
+                    'Role tidak dapat diubah selama transfer pegawai masih terjadwal.',
+                    $exception->getMessage()
+                );
+            }
+        }
+
+        $this->assertDatabaseHas('user_role_scope', [
+            'id' => $oldScope->id,
+            'user_id' => $user->id,
+            'role_id' => Role::where('kode', 'STAFF')->value('id'),
+            'unit_id' => $oldUnit->id,
+            'selesai' => '2026-12-01 00:00:00',
+        ]);
     }
 
     public function test_inactive_unit_cannot_receive_role_assignment(): void

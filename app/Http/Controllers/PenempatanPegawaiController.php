@@ -89,6 +89,23 @@ class PenempatanPegawaiController extends Controller
         ]);
     }
 
+    public function cancelTransfer(Pegawai $pegawai)
+    {
+        Gate::authorize('update', $pegawai);
+
+        try {
+            $this->penempatanService->cancelScheduledTransfer($pegawai);
+        } catch (LogicException $exception) {
+            throw ValidationException::withMessages([
+                'penempatan' => $exception->getMessage(),
+            ]);
+        }
+
+        return response()->json([
+            'message' => 'Transfer pegawai terjadwal berhasil dibatalkan.',
+        ]);
+    }
+
     /**
      * Menampilkan riwayat penempatan pegawai.
      */

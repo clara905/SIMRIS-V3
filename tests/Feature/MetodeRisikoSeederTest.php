@@ -8,7 +8,9 @@ use App\Models\SkalaKemungkinan;
 use App\Models\TingkatRisiko;
 use App\Models\VersiMetodeRisiko;
 use Database\Seeders\MetodeRisikoSeeder;
+use Illuminate\Database\QueryException;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\DB;
 use RuntimeException;
 use Tests\TestCase;
 
@@ -115,15 +117,61 @@ class MetodeRisikoSeederTest extends TestCase
     public function test_seeder_can_be_executed_repeatedly_without_duplicates(): void
     {
         $this->seed(MetodeRisikoSeeder::class);
-        $this->seed(MetodeRisikoSeeder::class);
 
-        $versi = VersiMetodeRisiko::where('kode_versi', 'SIMRIS-MR-001')->firstOrFail();
+        $versi = VersiMetodeRisiko::where(
+            'kode_versi',
+            'SIMRIS-MR-001'
+        )->firstOrFail();
+        $kemungkinan = SkalaKemungkinan::query()
+            ->where('versi_metode_id', $versi->id)
+            ->where('nilai', 1)
+            ->firstOrFail();
+        $matriks = MatriksRisiko::query()
+            ->where('versi_metode_id', $versi->id)
+            ->where('kemungkinan_id', $kemungkinan->id)
+            ->whereHas('dampak', fn ($query) => $query->where('nilai', 1))
+            ->firstOrFail();
+
+        $kemungkinan->update(['nama' => 'Label draft khusus']);
+        $matriks->update(['rekomendasi_keputusan' => 'MODIFIKASI']);
+
+        $this->seed(MetodeRisikoSeeder::class);
 
         $this->assertSame(1, VersiMetodeRisiko::where('kode_versi', 'SIMRIS-MR-001')->count());
         $this->assertSame(5, SkalaKemungkinan::where('versi_metode_id', $versi->id)->count());
         $this->assertSame(5, SkalaDampak::where('versi_metode_id', $versi->id)->count());
         $this->assertSame(5, TingkatRisiko::where('versi_metode_id', $versi->id)->count());
         $this->assertSame(25, MatriksRisiko::where('versi_metode_id', $versi->id)->count());
+        $this->assertSame('Label draft khusus', $kemungkinan->fresh()->nama);
+        $this->assertSame('MODIFIKASI', $matriks->fresh()->rekomendasi_keputusan);
+    }
+
+    public function test_seeder_rolls_back_master_rows_when_matrix_creation_fails(): void
+    {
+        DB::unprepared("
+            CREATE TRIGGER fail_matrix_seed
+            BEFORE INSERT ON matriks_risiko
+            BEGIN
+                SELECT RAISE(FAIL, 'matrix seeder failure');
+            END
+        ");
+
+        try {
+            try {
+                $this->seed(MetodeRisikoSeeder::class);
+                $this->fail('The method seeder should fail when inserting a matrix row.');
+            } catch (QueryException) {
+                $this->assertDatabaseMissing('versi_metode_risiko', [
+                    'kode_versi' => 'SIMRIS-MR-001',
+                ]);
+                $this->assertDatabaseCount('skala_kemungkinan', 0);
+                $this->assertDatabaseCount('skala_dampak', 0);
+                $this->assertDatabaseCount('tingkat_risiko', 0);
+                $this->assertDatabaseCount('matriks_risiko', 0);
+            }
+        } finally {
+            DB::unprepared('DROP TRIGGER IF EXISTS fail_matrix_seed');
+        }
     }
 
     public function test_seeder_refuses_to_modify_frozen_method_version(): void

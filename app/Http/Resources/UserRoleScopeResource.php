@@ -9,6 +9,8 @@ class UserRoleScopeResource extends JsonResource
 {
     public function toArray(Request $request): array
     {
+        $now = now();
+
         return [
             'id' => $this->id,
             'user_id' => $this->user_id,
@@ -25,7 +27,8 @@ class UserRoleScopeResource extends JsonResource
             ] : null),
             'mulai' => $this->mulai?->toISOString(),
             'selesai' => $this->selesai?->toISOString(),
-            'aktif' => $this->selesai === null,
+            'aktif' => $this->mulai?->lte($now)
+                && ($this->selesai === null || $this->selesai->gt($now)),
         ];
     }
 }

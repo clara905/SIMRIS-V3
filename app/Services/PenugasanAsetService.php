@@ -123,7 +123,10 @@ class PenugasanAsetService
                 ->with(['aset', 'pegawai'])
                 ->firstOrFail();
 
-            if ($assignment->selesai !== null) {
+            if (
+                $assignment->selesai !== null
+                && $assignment->selesai->lt(today())
+            ) {
                 throw ValidationException::withMessages([
                     'tanggal_selesai' => 'Penugasan ini sudah berakhir.',
                 ]);
@@ -142,6 +145,14 @@ class PenugasanAsetService
                 $tanggalSelesai
             );
 
+            $this->validateNoOverlap(
+                $assignment->aset,
+                $assignment->jenis_tanggung_jawab,
+                $assignment->mulai->toDateString(),
+                $tanggalSelesai,
+                (int) $assignment->id
+            );
+
             $dataLama = $this->assignmentSnapshot($assignment);
 
             $assignment->selesai = $tanggalSelesai;
@@ -153,7 +164,9 @@ class PenugasanAsetService
                 (int) $assignment->id,
                 $dataLama,
                 $this->assignmentSnapshot($assignment),
-                'Penugasan aset diakhiri.'
+                $dataLama['selesai'] !== null
+                    ? 'Jadwal akhir penugasan aset diperbarui.'
+                    : 'Penugasan aset diakhiri.'
             );
 
             return $assignment->fresh('pegawai');
@@ -191,7 +204,8 @@ class PenugasanAsetService
         Aset $aset,
         string $jenis,
         string $mulai,
-        ?string $selesai
+        ?string $selesai,
+        ?int $ignoreAssignmentId = null
     ): void {
         $query = PenugasanAset::query()
             ->where('aset_idx', $aset->idx)
@@ -200,7 +214,15 @@ class PenugasanAsetService
             ->where(function ($builder) use ($mulai) {
                 $builder->whereNull('selesai')
                     ->orWhereDate('selesai', '>=', $mulai);
-            });
+            })
+            ->when(
+                $ignoreAssignmentId !== null,
+                fn ($builder) => $builder->where(
+                    'id',
+                    '!=',
+                    $ignoreAssignmentId
+                )
+            );
 
         if ($query->exists()) {
             throw ValidationException::withMessages([

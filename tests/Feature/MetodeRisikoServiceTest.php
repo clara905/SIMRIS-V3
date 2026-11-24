@@ -5,6 +5,7 @@ namespace Tests\Feature;
 use App\Models\VersiMetodeRisiko;
 use App\Services\AuditService;
 use App\Services\MetodeRisikoService;
+use Illuminate\Database\QueryException;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Validation\ValidationException;
 use LogicException;
@@ -160,7 +161,7 @@ class MetodeRisikoServiceTest extends TestCase
         $this->service->freeze($frozen);
     }
 
-    public function test_freeze_rejects_matrix_reference_from_another_method_version(): void
+    public function test_database_rejects_matrix_reference_from_another_method_version(): void
     {
         $first = $this->createDraft('METODE-A');
         $second = $this->createDraft('METODE-B');
@@ -179,17 +180,15 @@ class MetodeRisikoServiceTest extends TestCase
 
         $matrix = $first->matriksRisiko()->firstOrFail();
 
-        // FK mengizinkan referensi ini, tetapi aturan domain harus menolaknya.
-        $matrix->forceFill([
-            'kemungkinan_id' => $foreignScale->id,
-        ])->save();
+        try {
+            $matrix->forceFill([
+                'kemungkinan_id' => $foreignScale->id,
+            ])->save();
 
-        $this->expectException(LogicException::class);
-        $this->expectExceptionMessage(
-            'Matriks memiliki referensi yang tidak valid atau berbeda versi.'
-        );
-
-        $this->service->freeze($first);
+            $this->fail('Referensi skala lintas versi harus ditolak oleh database.');
+        } catch (QueryException) {
+            $this->assertTrue(true);
+        }
     }
 
     public function test_configuration_is_rolled_back_when_audit_fails(): void

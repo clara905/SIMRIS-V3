@@ -88,7 +88,12 @@ class PengajuanAkunPolicy
             }
 
             if ($roleCode === 'STAFF') {
-                return $unitId === null;
+                return $unitId !== null
+                    && $this->validRoleUnit(
+                        $pengajuan,
+                        $roleCode,
+                        $unitId
+                    );
             }
 
             return $unitId !== null
@@ -205,8 +210,19 @@ class PengajuanAkunPolicy
             'KASUB' => 'SUBBIDANG',
         ];
 
-        if ($roleCode === 'SUPER_ADMIN' || $roleCode === 'STAFF') {
+        if ($roleCode === 'SUPER_ADMIN') {
             return $unitId === null;
+        }
+
+        if ($roleCode === 'STAFF') {
+            if ($unitId === null) {
+                return false;
+            }
+
+            $placement = $this->activePlacement($pengajuan);
+
+            return $placement !== null
+                && (int) $placement->unit_id === $unitId;
         }
 
         if (! isset($allowedTypes[$roleCode]) || $unitId === null) {

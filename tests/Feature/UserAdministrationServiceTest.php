@@ -206,7 +206,7 @@ class UserAdministrationServiceTest extends TestCase
 
         $unit = $this->createUnit('SATKER');
 
-        $this->createScope($user, 'STAFF', null);
+        $this->createScope($user, 'STAFF', $unit->id);
 
         PenempatanPegawai::create([
             'pegawai_id' => $pegawai->id,

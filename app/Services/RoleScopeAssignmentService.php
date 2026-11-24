@@ -44,6 +44,8 @@ class RoleScopeAssignmentService
                         'Pegawai tidak aktif dan tidak dapat diberikan role.'
                     );
                 }
+
+                $this->assertNoPendingTransfer($lockedUser);
             }
 
             $role = Role::query()
@@ -171,24 +173,30 @@ class RoleScopeAssignmentService
         string $roleCode,
         ?int $unitId
     ): void {
-        if (in_array($roleCode, ['SUPER_ADMIN', 'STAFF'], true)) {
+        if ($roleCode === 'SUPER_ADMIN') {
             if ($unitId !== null) {
                 throw new LogicException(
-                    "{$roleCode} tidak boleh memiliki unit_id."
+                    'SUPER_ADMIN tidak boleh memiliki unit_id.'
                 );
-            }
-
-            if ($roleCode === 'STAFF') {
-                $this->validateStaffPlacement($user);
             }
 
             return;
         }
 
         if ($unitId === null) {
-            throw new LogicException(
-                'Role ini wajib memiliki unit organisasi.'
-            );
+            throw new LogicException('Role selain SUPER_ADMIN wajib memiliki unit organisasi.');
+        }
+
+        if ($roleCode === 'STAFF') {
+            $placement = $this->validateStaffPlacement($user);
+
+            if ((int) $placement->unit_id !== $unitId) {
+                throw new LogicException(
+                    'Unit scope STAFF harus sesuai dengan penempatan aktifnya.'
+                );
+            }
+
+            return;
         }
 
         $expectedUnitTypes = [
@@ -222,10 +230,25 @@ class RoleScopeAssignmentService
         }
     }
 
+    private function assertNoPendingTransfer(User $user): void
+    {
+        $hasPendingTransfer = PenempatanPegawai::query()
+            ->where('pegawai_id', $user->pegawai_id)
+            ->whereDate('mulai', '>', today())
+            ->whereNull('selesai')
+            ->exists();
+
+        if ($hasPendingTransfer) {
+            throw new LogicException(
+                'Role tidak dapat diubah selama transfer pegawai masih terjadwal.'
+            );
+        }
+    }
+
     /**
      * STAFF wajib memiliki tepat satu penempatan aktif.
      */
-    private function validateStaffPlacement(User $user): void
+    private function validateStaffPlacement(User $user): PenempatanPegawai
     {
         if (! $user->pegawai_id) {
             throw new LogicException(
@@ -250,10 +273,14 @@ class RoleScopeAssignmentService
             );
         }
 
-        if (! $placements->first()->unit?->aktif) {
+        $placement = $placements->first();
+
+        if (! $placement->unit?->aktif) {
             throw new LogicException(
                 'Unit penempatan STAFF tidak aktif.'
             );
         }
+
+        return $placement;
     }
 }
