@@ -22,12 +22,19 @@ interface TopbarProps {
 }
 
 function getInitials(name: string): string {
+  // Handle edge cases: null, undefined, empty, or non-string
+  if (!name || typeof name !== 'string' || name.trim().length === 0) {
+    return 'U';
+  }
+
   return name
+    .trim()
     .split(' ')
+    .filter(n => n.length > 0) // Remove empty strings from multiple spaces
     .slice(0, 2)
     .map((n) => n[0])
     .join('')
-    .toUpperCase();
+    .toUpperCase() || 'U'; // Fallback if result is empty string
 }
 
 function useBreadcrumb(): { label: string; path: string }[] {

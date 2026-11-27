@@ -29,7 +29,12 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     authService
       .getCurrentUser(token)
       .then((u) => setUser(u))
-      .catch(() => {
+      .catch((err) => {
+        // Log unexpected failures for debugging (401 is expected for invalid tokens)
+        const status = err?.response?.status;
+        if (status !== 401) {
+          console.error('[AuthContext] Unexpected token restoration failure:', err);
+        }
         localStorage.removeItem(TOKEN_KEY);
       })
       .finally(() => setIsLoading(false));

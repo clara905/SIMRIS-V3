@@ -1,114 +1,186 @@
-import { useState } from 'react';
-import { FileText, BarChart2, PieChart, TrendingUp, FileDown, Info } from 'lucide-react';
+import { useEffect, useState } from 'react';
+import { Link } from 'react-router-dom';
+import { 
+  FileText, 
+  BarChart2, 
+  PieChart as PieChartIcon, 
+  TrendingUp, 
+  Server,
+  ShieldCheck,
+  AlertTriangle,
+  CheckCircle,
+  Clock,
+  BookOpen,
+} from 'lucide-react';
 import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
   PieChart as RechartsPieChart, Pie, Cell, Legend,
 } from 'recharts';
+import { reportsService, type ReportDashboardStats } from '@/services/reports.service';
 import { PageHeader } from '@/components/common/PageHeader';
 import { Card, CardHeader } from '@/components/ui/Card';
+import { StatCard } from '@/components/ui/StatCard';
 import { Button } from '@/components/ui/Button';
 import { Badge } from '@/components/ui/Badge';
-
-const riskByLevel = [
-  { level: 'Kritis', jumlah: 7, color: '#762127' },
-  { level: 'Tinggi', jumlah: 11, color: '#DC2626' },
-  { level: 'Sedang', jumlah: 13, color: '#D97706' },
-  { level: 'Rendah', jumlah: 7, color: '#16A34A' },
-];
-
-const treatmentProgress = [
-  { name: 'Selesai', value: 8, color: '#16A34A' },
-  { name: 'Berjalan', value: 7, color: '#2563EB' },
-  { name: 'Belum Mulai', value: 5, color: '#9CA3AF' },
-  { name: 'Terlambat', value: 3, color: '#DC2626' },
-];
-
-const assetByCategory = [
-  { kategori: 'Hardware', jumlah: 42 },
-  { kategori: 'Software', jumlah: 35 },
-  { kategori: 'Data', jumlah: 28 },
-  { kategori: 'Jaringan', jumlah: 18 },
-  { kategori: 'SDM', jumlah: 12 },
-  { kategori: 'Lainnya', jumlah: 7 },
-];
-
-const REPORT_TYPES = [
-  { id: 'risk-summary', label: 'Ringkasan Risiko', icon: BarChart2, desc: 'Distribusi dan tren risiko per periode' },
-  { id: 'asset-summary', label: 'Ringkasan Aset', icon: PieChart, desc: 'Inventaris aset berdasarkan kategori dan status' },
-  { id: 'treatment-progress', label: 'Progres Penanganan', icon: TrendingUp, desc: 'Status dan progres rencana penanganan risiko' },
-  { id: 'full-report', label: 'Laporan Lengkap', icon: FileText, desc: 'Laporan komprehensif seluruh modul' },
-];
+import { PageLoader } from '@/components/ui/LoadingSpinner';
 
 export function ReportsPage() {
-  const [dateFrom, setDateFrom] = useState('2026-10-01');
-  const [dateTo, setDateTo] = useState('2026-11-30');
+  const [stats, setStats] = useState<ReportDashboardStats | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    reportsService.getDashboardStats()
+      .then(setStats)
+      .catch((err) => {
+        console.error('[ReportsPage] Failed to fetch dashboard stats:', err);
+        setError('Gagal memuat data laporan. Silakan muat ulang halaman.');
+      })
+      .finally(() => setLoading(false));
+  }, []);
+
+  if (loading) return <PageLoader />;
+
+  if (error) {
+    return (
+      <div className="flex min-h-[400px] items-center justify-center">
+        <Card padding="md" className="max-w-md text-center">
+          <AlertTriangle className="mx-auto h-12 w-12 text-status-error" />
+          <h3 className="mt-4 text-lg font-semibold text-text-primary">Gagal Memuat Laporan</h3>
+          <p className="mt-2 text-sm text-text-secondary">{error}</p>
+          <Button
+            variant="primary"
+            className="mt-4"
+            onClick={() => window.location.reload()}
+          >
+            Muat Ulang Halaman
+          </Button>
+        </Card>
+      </div>
+    );
+  }
+
+  const riskByLevel = stats?.risksByLevel || [];
+  const treatmentProgress = stats?.treatmentsByStatus || [];
+  const assetByCategory = (stats?.assetsByCategory || []).map(item => ({
+    kategori: item.category,
+    jumlah: item.count,
+  }));
 
   return (
     <div className="space-y-6">
-      <PageHeader title="Laporan" description="Ringkasan dan ekspor data manajemen risiko" />
+      <PageHeader 
+        title="Laporan & Analitik" 
+        description="Ringkasan dan analisis manajemen risiko keamanan informasi"
+      />
 
-      {/* Export notice */}
-      <div className="flex items-start gap-3 rounded-md border border-blue-200 bg-blue-50 px-4 py-3 text-sm text-blue-800">
-        <Info className="mt-0.5 h-4 w-4 shrink-0" />
-        <div>
-          <strong>Fitur ekspor PDF/Excel</strong> sedang dalam pengembangan dan akan tersedia setelah integrasi backend selesai.
-          Saat ini Anda dapat melihat pratinjau laporan di bawah ini.
-        </div>
+      {/* Summary Stats */}
+      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
+        <StatCard
+          label="Total Aset"
+          value={stats?.totalAssets || 0}
+          icon={Server}
+          supporting="Aset terdaftar dalam sistem"
+          variant="info"
+        />
+        <StatCard
+          label="Risiko Teridentifikasi"
+          value={stats?.totalRisks || 0}
+          icon={AlertTriangle}
+          supporting={`${stats?.criticalRisks || 0} risiko kritis`}
+          variant="warning"
+        />
+        <StatCard
+          label="Rencana Penanganan"
+          value={stats?.totalTreatments || 0}
+          icon={ShieldCheck}
+          supporting={`${stats?.inProgressTreatments || 0} sedang berjalan`}
+        />
+        <StatCard
+          label="Penanganan Selesai"
+          value={stats?.completedTreatments || 0}
+          icon={CheckCircle}
+          supporting="Treatment berhasil diselesaikan"
+          variant="success"
+        />
       </div>
 
-      {/* Date range */}
-      <Card padding="md">
-        <CardHeader title="Filter Periode" description="Atur rentang tanggal untuk seluruh laporan" className="mb-4" />
-        <div className="flex flex-wrap items-end gap-4">
-          <div className="flex flex-col gap-1">
-            <label className="text-sm font-medium text-text-primary">Dari</label>
-            <input type="date" value={dateFrom} onChange={(e) => setDateFrom(e.target.value)} className="h-9 rounded-md border border-border px-3 text-sm focus:outline-none focus:ring-2 focus:ring-brand" />
-          </div>
-          <div className="flex flex-col gap-1">
-            <label className="text-sm font-medium text-text-primary">Sampai</label>
-            <input type="date" value={dateTo} onChange={(e) => setDateTo(e.target.value)} className="h-9 rounded-md border border-border px-3 text-sm focus:outline-none focus:ring-2 focus:ring-brand" />
-          </div>
-          <Button variant="secondary" size="md">Terapkan Filter</Button>
-        </div>
-      </Card>
-
-      {/* Report types */}
+      {/* Quick Links */}
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
-        {REPORT_TYPES.map((r) => (
-          <div key={r.id} className="flex flex-col gap-3 rounded-lg border border-border bg-white p-4 shadow-card">
-            <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-brand-muted">
-              <r.icon className="h-5 w-5 text-brand" />
+        <Link to="/laporan/aset" className="block">
+          <div className="flex flex-col gap-3 rounded-lg border border-border bg-white p-4 shadow-card hover:shadow-md transition-shadow">
+            <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-blue-100">
+              <Server className="h-5 w-5 text-blue-700" />
             </div>
             <div className="flex-1">
-              <p className="text-sm font-semibold text-text-primary">{r.label}</p>
-              <p className="mt-0.5 text-xs text-text-secondary">{r.desc}</p>
+              <p className="text-sm font-semibold text-text-primary">Laporan Aset</p>
+              <p className="mt-0.5 text-xs text-text-secondary">Inventaris dan klasifikasi aset</p>
             </div>
-            <Button
-              variant="outline"
-              size="sm"
-              leftIcon={<FileDown className="h-3.5 w-3.5" />}
-              disabled
-              className="opacity-60 cursor-not-allowed"
-              title="Fitur belum tersedia"
-            >
-              Ekspor
-            </Button>
           </div>
-        ))}
+        </Link>
+
+        <Link to="/laporan/risiko" className="block">
+          <div className="flex flex-col gap-3 rounded-lg border border-border bg-white p-4 shadow-card hover:shadow-md transition-shadow">
+            <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-amber-100">
+              <AlertTriangle className="h-5 w-5 text-amber-700" />
+            </div>
+            <div className="flex-1">
+              <p className="text-sm font-semibold text-text-primary">Laporan Risiko</p>
+              <p className="mt-0.5 text-xs text-text-secondary">Asesmen dan evaluasi risiko</p>
+            </div>
+          </div>
+        </Link>
+
+        <Link to="/laporan/penanganan" className="block">
+          <div className="flex flex-col gap-3 rounded-lg border border-border bg-white p-4 shadow-card hover:shadow-md transition-shadow">
+            <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-green-100">
+              <ShieldCheck className="h-5 w-5 text-green-700" />
+            </div>
+            <div className="flex-1">
+              <p className="text-sm font-semibold text-text-primary">Laporan Penanganan</p>
+              <p className="mt-0.5 text-xs text-text-secondary">Progres dan status treatment</p>
+            </div>
+          </div>
+        </Link>
+
+        <Link to="/laporan/dokumentasi" className="block">
+          <div className="flex flex-col gap-3 rounded-lg border border-border bg-white p-4 shadow-card hover:shadow-md transition-shadow">
+            <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-brand-muted">
+              <BookOpen className="h-5 w-5 text-brand" />
+            </div>
+            <div className="flex-1">
+              <p className="text-sm font-semibold text-text-primary">Laporan Dokumentasi</p>
+              <p className="mt-0.5 text-xs text-text-secondary">Dokumen dan SOP</p>
+            </div>
+          </div>
+        </Link>
       </div>
 
-      {/* Charts preview */}
+      {/* Charts */}
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
         <Card padding="md">
-          <CardHeader title="Distribusi Risiko" description={`Periode: ${dateFrom} — ${dateTo}`} className="mb-4" />
-          <div className="h-56">
+          <CardHeader title="Distribusi Risiko" description="Risiko berdasarkan tingkat severity" className="mb-4" />
+          <div className="h-64">
             <ResponsiveContainer width="100%" height="100%">
-              <BarChart data={riskByLevel} barSize={36} margin={{ top: 4, right: 8, left: -16, bottom: 0 }}>
+              <BarChart data={riskByLevel} barSize={48} margin={{ top: 4, right: 8, left: -16, bottom: 0 }}>
                 <CartesianGrid strokeDasharray="3 3" stroke="#E5E7EB" vertical={false} />
-                <XAxis dataKey="level" tick={{ fontSize: 12, fill: '#6B7280' }} axisLine={false} tickLine={false} />
-                <YAxis tick={{ fontSize: 12, fill: '#6B7280' }} axisLine={false} tickLine={false} allowDecimals={false} />
-                <Tooltip contentStyle={{ borderRadius: 8, border: '1px solid #E5E7EB', fontSize: 12 }} cursor={{ fill: '#F5F6F8' }} />
-                <Bar dataKey="jumlah" name="Jumlah" radius={[4, 4, 0, 0]}>
+                <XAxis 
+                  dataKey="level" 
+                  tick={{ fontSize: 12, fill: '#6B7280' }} 
+                  axisLine={false} 
+                  tickLine={false} 
+                />
+                <YAxis 
+                  tick={{ fontSize: 12, fill: '#6B7280' }} 
+                  axisLine={false} 
+                  tickLine={false} 
+                  allowDecimals={false} 
+                />
+                <Tooltip 
+                  contentStyle={{ borderRadius: 8, border: '1px solid #E5E7EB', fontSize: 12 }} 
+                  cursor={{ fill: '#F5F6F8' }} 
+                />
+                <Bar dataKey="count" name="Jumlah Risiko" radius={[4, 4, 0, 0]}>
                   {riskByLevel.map((entry, i) => <Cell key={i} fill={entry.color} />)}
                 </Bar>
               </BarChart>
@@ -117,11 +189,19 @@ export function ReportsPage() {
         </Card>
 
         <Card padding="md">
-          <CardHeader title="Status Penanganan Risiko" className="mb-4" />
-          <div className="h-56">
+          <CardHeader title="Status Penanganan Risiko" description="Distribusi status treatment plan" className="mb-4" />
+          <div className="h-64">
             <ResponsiveContainer width="100%" height="100%">
               <RechartsPieChart>
-                <Pie data={treatmentProgress} dataKey="value" nameKey="name" cx="50%" cy="45%" outerRadius={80} innerRadius={48}>
+                <Pie 
+                  data={treatmentProgress} 
+                  dataKey="count" 
+                  nameKey="status" 
+                  cx="50%" 
+                  cy="50%" 
+                  outerRadius={90} 
+                  innerRadius={55}
+                >
                   {treatmentProgress.map((entry, i) => <Cell key={i} fill={entry.color} />)}
                 </Pie>
                 <Legend iconType="circle" iconSize={8} wrapperStyle={{ fontSize: 12 }} />
@@ -132,22 +212,35 @@ export function ReportsPage() {
         </Card>
 
         <Card padding="md" className="lg:col-span-2">
-          <CardHeader title="Aset Berdasarkan Kategori" className="mb-4" />
-          <div className="h-56">
+          <CardHeader title="Aset Berdasarkan Kategori" description="Distribusi aset organisasi" className="mb-4" />
+          <div className="h-64">
             <ResponsiveContainer width="100%" height="100%">
-              <BarChart data={assetByCategory} barSize={36} margin={{ top: 4, right: 8, left: -16, bottom: 0 }}>
+              <BarChart data={assetByCategory} barSize={42} margin={{ top: 4, right: 8, left: -16, bottom: 0 }}>
                 <CartesianGrid strokeDasharray="3 3" stroke="#E5E7EB" vertical={false} />
-                <XAxis dataKey="kategori" tick={{ fontSize: 12, fill: '#6B7280' }} axisLine={false} tickLine={false} />
-                <YAxis tick={{ fontSize: 12, fill: '#6B7280' }} axisLine={false} tickLine={false} allowDecimals={false} />
-                <Tooltip contentStyle={{ borderRadius: 8, border: '1px solid #E5E7EB', fontSize: 12 }} cursor={{ fill: '#F5F6F8' }} />
-                <Bar dataKey="jumlah" name="Jumlah Aset" radius={[4, 4, 0, 0]} fill="#8F2D35" />
+                <XAxis 
+                  dataKey="kategori" 
+                  tick={{ fontSize: 12, fill: '#6B7280' }} 
+                  axisLine={false} 
+                  tickLine={false} 
+                />
+                <YAxis 
+                  tick={{ fontSize: 12, fill: '#6B7280' }} 
+                  axisLine={false} 
+                  tickLine={false} 
+                  allowDecimals={false} 
+                />
+                <Tooltip 
+                  contentStyle={{ borderRadius: 8, border: '1px solid #E5E7EB', fontSize: 12 }} 
+                  cursor={{ fill: '#F5F6F8' }} 
+                />
+                <Bar dataKey="jumlah" name="Jumlah Aset" radius={[4, 4, 0, 0]} fill="#762127" />
               </BarChart>
             </ResponsiveContainer>
           </div>
         </Card>
       </div>
 
-      {/* Summary table */}
+      {/* Summary Table */}
       <Card padding="none">
         <div className="border-b border-border px-5 py-4">
           <CardHeader title="Ringkasan Eksekutif" description="Kondisi keamanan informasi organisasi" />
@@ -162,22 +255,64 @@ export function ReportsPage() {
               </tr>
             </thead>
             <tbody className="divide-y divide-border">
-              {[
-                { label: 'Total Aset Terdaftar', value: '142', status: 'info' as const, statusLabel: 'Stabil' },
-                { label: 'Total Risiko Teridentifikasi', value: '38', status: 'warning' as const, statusLabel: 'Perlu Perhatian' },
-                { label: 'Risiko Level Kritis', value: '7', status: 'critical' as const, statusLabel: 'Kritis' },
-                { label: 'Rencana Penanganan Aktif', value: '15', status: 'info' as const, statusLabel: 'Berjalan' },
-                { label: 'Rencana Melewati Tenggat', value: '3', status: 'high' as const, statusLabel: 'Terlambat' },
-                { label: 'Rencana Selesai', value: '8', status: 'success' as const, statusLabel: 'Selesai' },
-              ].map((row) => (
-                <tr key={row.label} className="hover:bg-surface-muted/50">
-                  <td className="px-5 py-3.5 font-medium text-text-primary">{row.label}</td>
-                  <td className="px-4 py-3.5 font-bold text-text-primary">{row.value}</td>
-                  <td className="px-4 py-3.5"><Badge variant={row.status}>{row.statusLabel}</Badge></td>
-                </tr>
-              ))}
+              <tr className="hover:bg-surface-muted/50">
+                <td className="px-5 py-3.5 font-medium text-text-primary">Total Aset Terdaftar</td>
+                <td className="px-4 py-3.5 font-bold text-text-primary">{stats?.totalAssets || 0}</td>
+                <td className="px-4 py-3.5"><Badge variant="info">Stabil</Badge></td>
+              </tr>
+              <tr className="hover:bg-surface-muted/50">
+                <td className="px-5 py-3.5 font-medium text-text-primary">Total Risiko Teridentifikasi</td>
+                <td className="px-4 py-3.5 font-bold text-text-primary">{stats?.totalRisks || 0}</td>
+                <td className="px-4 py-3.5"><Badge variant="warning">Perlu Perhatian</Badge></td>
+              </tr>
+              <tr className="hover:bg-surface-muted/50">
+                <td className="px-5 py-3.5 font-medium text-text-primary">Risiko Level Kritis</td>
+                <td className="px-4 py-3.5 font-bold text-text-primary">{stats?.criticalRisks || 0}</td>
+                <td className="px-4 py-3.5"><Badge variant="critical">Kritis</Badge></td>
+              </tr>
+              <tr className="hover:bg-surface-muted/50">
+                <td className="px-5 py-3.5 font-medium text-text-primary">Rencana Penanganan Aktif</td>
+                <td className="px-4 py-3.5 font-bold text-text-primary">{stats?.totalTreatments || 0}</td>
+                <td className="px-4 py-3.5"><Badge variant="info">Berjalan</Badge></td>
+              </tr>
+              <tr className="hover:bg-surface-muted/50">
+                <td className="px-5 py-3.5 font-medium text-text-primary">Rencana Sedang Berjalan</td>
+                <td className="px-4 py-3.5 font-bold text-text-primary">{stats?.inProgressTreatments || 0}</td>
+                <td className="px-4 py-3.5"><Badge variant="info">Aktif</Badge></td>
+              </tr>
+              <tr className="hover:bg-surface-muted/50">
+                <td className="px-5 py-3.5 font-medium text-text-primary">Rencana Selesai</td>
+                <td className="px-4 py-3.5 font-bold text-text-primary">{stats?.completedTreatments || 0}</td>
+                <td className="px-4 py-3.5"><Badge variant="success">Selesai</Badge></td>
+              </tr>
+              <tr className="hover:bg-surface-muted/50">
+                <td className="px-5 py-3.5 font-medium text-text-primary">Total Dokumen</td>
+                <td className="px-4 py-3.5 font-bold text-text-primary">{stats?.totalDocuments || 0}</td>
+                <td className="px-4 py-3.5"><Badge variant="neutral">Terdokumentasi</Badge></td>
+              </tr>
+              <tr className="hover:bg-surface-muted/50">
+                <td className="px-5 py-3.5 font-medium text-text-primary">SOP Aktif</td>
+                <td className="px-4 py-3.5 font-bold text-text-primary">{stats?.activeSOPs || 0} / {stats?.totalSOPs || 0}</td>
+                <td className="px-4 py-3.5"><Badge variant="success">Berlaku</Badge></td>
+              </tr>
             </tbody>
           </table>
+        </div>
+      </Card>
+
+      {/* Info Banner */}
+      <Card padding="md" className="border-l-[3px] border-l-blue-600 bg-blue-50/50">
+        <div className="flex items-start gap-3">
+          <FileText className="h-5 w-5 shrink-0 text-blue-700" />
+          <div className="min-w-0 flex-1">
+            <p className="text-sm font-medium text-blue-900">
+              Laporan Berbasis Data Real-Time
+            </p>
+            <p className="mt-1 text-xs text-blue-800">
+              Semua statistik dan grafik di atas dihasilkan dari data aktual modul Asset, Risk Assessment, Treatment, dan Documentation. 
+              Ekspor PDF/Excel akan tersedia setelah integrasi backend selesai.
+            </p>
+          </div>
         </div>
       </Card>
     </div>

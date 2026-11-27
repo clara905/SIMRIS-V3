@@ -48,6 +48,20 @@ const MOCK_USERS: Array<{ email: string; password: string; user: AuthUser; token
       pegawai: { id: 2, nip: '197505152000031002', nama: 'Kepala Satker' },
     },
   },
+  {
+    email: 'staff@simris.test',
+    password: 'password',
+    token: 'mock-token-staff-003',
+    user: {
+      id: 3,
+      username: 'staff.ti01',
+      email: 'staff@simris.test',
+      aktif: true,
+      role: { kode: 'STAFF', nama: 'Staff' },
+      unit: { id: 1, kode: 'SATKER-001', nama: 'Satuan Kerja Utama', jenis: 'SATKER' },
+      pegawai: { id: 3, nip: '199507202021011005', nama: 'Budi Santoso' },
+    },
+  },
 ];
 
 async function mockLogin(credentials: LoginCredentials): Promise<AuthResponse> {

@@ -36,7 +36,14 @@ export function StatCard({
   variant = 'default',
   className,
 }: StatCardProps) {
-  const { icon: iconClass, accent } = config[variant];
+  // Defensive: fallback to 'default' if variant is not in config
+  const selectedVariant = variant in config ? variant : 'default';
+  const { icon: iconClass, accent } = config[selectedVariant];
+  
+  // Log warning in development if invalid variant is used
+  if (selectedVariant !== variant && process.env.NODE_ENV === 'development') {
+    console.warn(`[StatCard] Invalid variant "${variant}" provided. Falling back to "default".`);
+  }
 
   return (
     <div
